@@ -193,7 +193,7 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 - [x] 4 miracles (Rain, Harvest, Drought, Plague), Influence economy, kindness → tone of the AI's writing
 - [ ] AI-generated dilemma cards (with offline fallback)
 - [x] End-of-prophecy **reveal + chronicle** screen: the AI explains what happened and why, citing the player's miracles
-- [x] Time controls (pause, 1×, 5×, 20×), click a camp to choose a tribe
+- [x] Time controls (pause and three speeds), click a camp to choose a tribe
 - [ ] Balance pass (droughts are too frequent; Influence piles up during warm-up)
 
 **Exit:** 5 playtesters each finish a 30–45 min session, can explain *why* their prophecy came true or broke, and at least 3 of them want to play again.
