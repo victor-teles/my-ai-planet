@@ -23,6 +23,8 @@ var tribe_food := PackedFloat64Array() ## stored food, in person-months
 
 ## What happened, newest last. The Oracle reads this to explain cause and effect.
 var events: Array[Dictionary] = []
+## Increases with every event, so views can tell which events they haven't shown yet.
+var next_event_id: int = 0
 
 
 static func create(new_seed: int) -> WorldState:
@@ -72,7 +74,8 @@ func remove_tribe(index: int) -> void:
 
 ## Event data must hold only strings and whole numbers so it survives a JSON round trip.
 func log_event(type: String, data: Dictionary = {}) -> void:
-	events.append({"tick": tick, "type": type, "data": data})
+	events.append({"id": next_event_id, "tick": tick, "type": type, "data": data})
+	next_event_id += 1
 	if events.size() > MAX_EVENTS:
 		events = events.slice(events.size() - MAX_EVENTS)
 
@@ -112,6 +115,7 @@ func to_dict() -> Dictionary:
 		"tribe_population": Array(tribe_population),
 		"tribe_food": Array(tribe_food),
 		"events": events,
+		"next_event_id": next_event_id,
 	}
 
 
@@ -128,6 +132,7 @@ static func from_dict(data: Dictionary) -> WorldState:
 	state.tribe_names = PackedStringArray(data["tribe_names"])
 	state.tribe_population = PackedInt32Array(data["tribe_population"])
 	state.tribe_food = PackedFloat64Array(data["tribe_food"])
+	state.next_event_id = int(data["next_event_id"])
 	for event: Dictionary in data["events"]:
 		state.events.append(_whole_numbers_to_int(event))
 	return state

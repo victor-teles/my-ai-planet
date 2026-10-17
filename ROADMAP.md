@@ -176,10 +176,11 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 **Exit:** a headless sim runs 10,000 ticks with the same result for the same seed, and one AI call returns schema-valid JSON. ✅ Both met.
 
 ### M1 — Art Bible & Look Prototype (2–3 weeks, can overlap M0)
-- [ ] Painterly toon shader, outline pass, cloud skybox, tilt-shift
-- [ ] One floating-island diorama, fully painted, as a target "beauty shot"
-- [ ] Two billboard characters with idle and walk animations
-- [ ] Palette and lighting presets for Era 3 (the vertical-slice era)
+- [x] Painterly toon shader, outline pass, dusk sky, tilt-shift, painted clouds, shore-foam water
+- [x] One floating-island diorama as a target "beauty shot" (procedural placeholder geometry, see `docs/screenshots/`)
+- [x] The live sim drawn on the island: camps, huts and hopping people grow with each tribe; drought turns the grass to straw; events pop up as floating text
+- [x] Palette and lighting for Era 3, written down in `docs/ART_BIBLE.md`
+- [ ] Hand-painted textures and 2D billboard characters to replace the primitive placeholders
 
 **Exit:** one screenshot that looks good enough to post publicly.
 

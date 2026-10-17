@@ -4,7 +4,7 @@ A hand-drawn 2.5D life simulation. You nurture a tiny planet from its first cell
 
 ## Run
 
-Open `Godot/` in Godot 4.7, then press Play. The current build is the M0 debug view:
+Open `Godot/` in Godot 4.7, then press Play. The current build is the M1 look prototype: the live simulation on a floating island.
 
 | Key | Action |
 |---|---|
@@ -12,6 +12,8 @@ Open `Godot/` in Godot 4.7, then press Play. The current build is the M0 debug v
 | 1 / 2 / 3 | Speed |
 | P | Ask the Oracle for a prophecy |
 | S / L | Save / load |
+| F1 | Debug panel |
+| Drag / wheel | Orbit / zoom |
 
 ## AI providers
 
@@ -32,3 +34,9 @@ MYAIPLANET_LIVE_AI=1 scripts/test.sh live_ai # real AI calls (costs money)
 ```
 
 `scripts/test.sh` uses `godot` from your PATH, or `GODOT_PATH`, or `/Applications/Godot.app`.
+
+## Screenshots
+
+`scripts/screenshot.sh out.png [frames] -- --seed=42 --warmup-years=110 --distance=15 --pitch=-0.6 --yaw=3.8 --prophecy` renders a frame (it opens a window briefly).
+
+![Village](docs/screenshots/m1-village.png)
