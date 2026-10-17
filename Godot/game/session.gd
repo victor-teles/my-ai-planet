@@ -16,9 +16,9 @@ enum Phase {
 
 const DILEMMA_MIN_YEARS := 18
 const DILEMMA_MAX_YEARS := 30
-## Drama (famine, drought, a split) can bring the next dilemma early, but not sooner than this.
+## Drama (famine, drought, a split, a war) can bring the next dilemma early, but not sooner than this.
 const DRAMA_MIN_YEARS := 12
-const DRAMATIC_EVENTS: Array[String] = ["famine", "drought_started", "tribe_split"]
+const DRAMATIC_EVENTS: Array[String] = ["famine", "drought_started", "tribe_split", "war", "water_low"]
 
 var sim: Simulation
 var oracle: Oracle

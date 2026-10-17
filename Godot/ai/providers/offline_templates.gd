@@ -79,6 +79,12 @@ func _chronicle(request: AIRequest) -> Dictionary:
 		causes.append("hunger struck %d time%s" % [counts["famine"], "s" if counts["famine"] > 1 else ""])
 	if counts.has("tribe_split"):
 		causes.append("%d new tribe%s broke away" % [counts["tribe_split"], "s" if counts["tribe_split"] > 1 else ""])
+	if counts.has("war"):
+		causes.append("the tribes went to war %d time%s" % [counts["war"], "s" if counts["war"] > 1 else ""])
+	if counts.has("tribes_merged"):
+		causes.append("%d tribe%s joined a friend's fire" % [counts["tribes_merged"], "s" if counts["tribes_merged"] > 1 else ""])
+	if counts.has("water_low"):
+		causes.append("the springs ran low %d time%s" % [counts["water_low"], "s" if counts["water_low"] > 1 else ""])
 	if not miracles.is_empty():
 		causes.append("the god sent %s" % ", ".join(miracles))
 	if causes.is_empty():
@@ -124,6 +130,40 @@ func _dilemma(request: AIRequest) -> Dictionary:
 					"effects": [{"type": "rain", "tribe": "", "amount": 6}, {"type": "influence", "tribe": "", "amount": -3}]},
 			],
 		}
+	var shared := _failing_shared_water(world)
+	if not shared.is_empty():
+		var first: String = shared["tribes"][0]
+		var second: String = shared["tribes"][1]
+		return {
+			"title": "The Sinking Spring",
+			"situation": "%s is falling, and both the %s and the %s fill their jars there. Each says the other drinks too much." % [String(shared["water"]).capitalize(), first, second],
+			"tribe": first,
+			"choices": [
+				{"label": "Send the %s to find new water" % first, "hint": "The journey is hard, but the quarrel will cool.",
+					"effects": [{"type": "food", "tribe": first, "amount": -2}, {"type": "relation", "tribe": second, "amount": 15}]},
+				{"label": "Let them fight over it", "hint": "The stronger will drink. The weaker will remember.",
+					"effects": [{"type": "relation", "tribe": second, "amount": -30}, {"type": "kindness", "tribe": "", "amount": -1}]},
+				{"label": "Fill the spring yourself", "hint": "Rain for everyone, at a price.",
+					"effects": [{"type": "rain", "tribe": "", "amount": 6}, {"type": "influence", "tribe": "", "amount": -3}]},
+			],
+		}
+	var rivals := _worst_relation(world)
+	if not rivals.is_empty() and int(rivals["relation"]) <= -25:
+		var first: String = rivals["tribes"][0]
+		var second: String = rivals["tribes"][1]
+		return {
+			"title": "Spears at the Border",
+			"situation": "The %s and the %s glare at each other across the hills. A hunter was hurt, and each tribe blames the other." % [first, second],
+			"tribe": first,
+			"choices": [
+				{"label": "Bring them to one fire", "hint": "Peace costs pride, and some food for the feast.",
+					"effects": [{"type": "relation", "tribe": second, "amount": 30}, {"type": "food", "tribe": first, "amount": -1}, {"type": "food", "tribe": second, "amount": -1}]},
+				{"label": "Bless the %s's spears" % first, "hint": "A war may come, and the %s may win it." % first,
+					"effects": [{"type": "relation", "tribe": second, "amount": -25}, {"type": "population", "tribe": first, "amount": 5}, {"type": "kindness", "tribe": "", "amount": -1}]},
+				{"label": "Stay silent", "hint": "Old grudges grow in silence.",
+					"effects": [{"type": "relation", "tribe": second, "amount": -10}]},
+			],
+		}
 	if float(hungry["food_months"]) < 1.5 and tribes.size() > 1:
 		var neighbor: Dictionary = largest if largest != hungry else tribes[(tribes.find(hungry) + 1) % tribes.size()]
 		return {
@@ -133,8 +173,8 @@ func _dilemma(request: AIRequest) -> Dictionary:
 			"choices": [
 				{"label": "Turn their eyes to the hunt", "hint": "The forest is dangerous in lean times.",
 					"effects": [{"type": "food", "tribe": hungry["name"], "amount": 2}, {"type": "population", "tribe": hungry["name"], "amount": -8}]},
-				{"label": "Let them raid the %s" % neighbor["name"], "hint": "Food taken is food someone else lacks.",
-					"effects": [{"type": "food", "tribe": hungry["name"], "amount": 3}, {"type": "food", "tribe": neighbor["name"], "amount": -3}, {"type": "kindness", "tribe": "", "amount": -1}]},
+				{"label": "Let them raid the %s" % neighbor["name"], "hint": "Food taken is food someone else lacks, and they will not forget.",
+					"effects": [{"type": "food", "tribe": hungry["name"], "amount": 3}, {"type": "food", "tribe": neighbor["name"], "amount": -3}, {"type": "relation", "tribe": neighbor["name"], "amount": -25}]},
 				{"label": "Do nothing", "hint": "The weak will not all survive the winter.",
 					"effects": [{"type": "population", "tribe": hungry["name"], "amount": -12}]},
 			],
@@ -163,3 +203,25 @@ func _dilemma(request: AIRequest) -> Dictionary:
 				"effects": [{"type": "influence", "tribe": "", "amount": 1}, {"type": "kindness", "tribe": "", "amount": -1}]},
 		],
 	}
+
+
+## A water source under a third full that two or more tribes drink from: {"water", "tribes"}.
+func _failing_shared_water(world: Dictionary) -> Dictionary:
+	for water: Dictionary in world.get("water_sources", []):
+		if float(water["fullness"]) >= 0.35:
+			continue
+		var drinkers := PackedStringArray()
+		for tribe: Dictionary in world.get("tribes", []):
+			if tribe["drinks_from"] == water["name"]:
+				drinkers.append(String(tribe["name"]))
+		if drinkers.size() >= 2:
+			return {"water": water["name"], "tribes": drinkers}
+	return {}
+
+
+func _worst_relation(world: Dictionary) -> Dictionary:
+	var worst := {}
+	for bond: Dictionary in world.get("relations", []):
+		if worst.is_empty() or int(bond["relation"]) < int(worst["relation"]):
+			worst = bond
+	return worst

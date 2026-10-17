@@ -57,4 +57,5 @@ static func cast(state: WorldState, id: String, tribe_name: String = "") -> bool
 	state.influence -= float(definition["cost"])
 	state.kindness += int(definition["kindness"])
 	state.log_event("miracle", data)
+	state.settle()
 	return true

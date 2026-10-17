@@ -15,21 +15,23 @@ func _run() -> void:
 	var seeds := int(options["seeds"])
 	var totals := {}
 	print("A bot plays kindly: whenever it holds 6 Influence it sends Rain in a drought, else Harvest to the hungriest tribe.")
-	print("seed  pop@50 pop@100 pop@200 pop@end tribes  droughts drought%  famines  infl/yr  prophecies(F/B) avg_len  dilemmas")
+	print("seed  pop@50 pop@100 pop@200 pop@end tribes  droughts drought%  famines  infl/yr  prophecies(F/B) avg_len  dilemmas  low_water  moves  wars  merges")
 	for seed_value: int in range(1, seeds + 1):
 		var row := await _simulate(seed_value, years)
 		for key: String in row:
 			totals[key] = float(totals.get(key, 0.0)) + float(row[key])
-		print("%4d  %6d %7d %7d %7d %6d  %8d %7.1f%%  %7d  %7.2f  %8d/%-6d %7.1f  %8d" % [
+		print("%4d  %6d %7d %7d %7d %6d  %8d %7.1f%%  %7d  %7.2f  %8d/%-6d %7.1f  %8d  %9d  %5d  %4d  %6d" % [
 			seed_value, row["pop50"], row["pop100"], row["pop200"], row["pop_end"], row["tribes"],
 			row["droughts"], row["drought_pct"], row["famines"], row["influence_per_year"],
 			row["fulfilled"], row["broken"], row["avg_prophecy_years"], row["dilemmas"],
+			row["low_water"], row["moves"], row["wars"], row["merges"],
 		])
-	print("mean  %6.0f %7.0f %7.0f %7.0f %6.1f  %8.1f %7.1f%%  %7.1f  %7.2f  %8.1f/%-6.1f %7.1f  %8.1f" % [
+	print("mean  %6.0f %7.0f %7.0f %7.0f %6.1f  %8.1f %7.1f%%  %7.1f  %7.2f  %8.1f/%-6.1f %7.1f  %8.1f  %9.1f  %5.1f  %4.1f  %6.1f" % [
 		totals["pop50"] / seeds, totals["pop100"] / seeds, totals["pop200"] / seeds, totals["pop_end"] / seeds,
 		totals["tribes"] / seeds, totals["droughts"] / seeds, totals["drought_pct"] / seeds, totals["famines"] / seeds,
 		totals["influence_per_year"] / seeds, totals["fulfilled"] / seeds, totals["broken"] / seeds,
 		totals["avg_prophecy_years"] / seeds, totals["dilemmas"] / seeds,
+		totals["low_water"] / seeds, totals["moves"] / seeds, totals["wars"] / seeds, totals["merges"] / seeds,
 	])
 	quit()
 
@@ -39,8 +41,9 @@ func _simulate(seed_value: int, years: int) -> Dictionary:
 	await session.begin()
 	var state := session.sim.state
 	var row := {"pop50": 0, "pop100": 0, "pop200": 0, "drought_months": 0, "influence_earned": 0.0}
-	var miracles := 0
 	var prophecy_years: Array[int] = []
+	var counts := {}
+	var counted_id := state.next_event_id - 1
 	for year: int in years:
 		for month: int in WorldState.MONTHS_PER_YEAR:
 			var influence_before := state.influence
@@ -63,16 +66,17 @@ func _simulate(seed_value: int, years: int) -> Dictionary:
 			row["influence_earned"] += maxf(state.influence - influence_before, 0.0)
 			if state.drought_months_left > 0:
 				row["drought_months"] += 1
+			# The world only keeps its newest events, so count them as they happen.
+			for event: Dictionary in state.events:
+				if int(event["id"]) > counted_id:
+					counts[event["type"]] = int(counts.get(event["type"], 0)) + 1
+			counted_id = state.next_event_id - 1
 		if year == 50:
 			row["pop50"] = state.total_population()
 		elif year == 100:
 			row["pop100"] = state.total_population()
 		elif year == 200:
 			row["pop200"] = state.total_population()
-	var counts := {}
-	# The world keeps the last WorldState.MAX_EVENTS events; 300 years stays under that.
-	for event: Dictionary in state.events:
-		counts[event["type"]] = int(counts.get(event["type"], 0)) + 1
 	var total_years := float(years)
 	return {
 		"pop50": row["pop50"], "pop100": row["pop100"], "pop200": row["pop200"],
@@ -84,4 +88,6 @@ func _simulate(seed_value: int, years: int) -> Dictionary:
 		"fulfilled": int(counts.get("prophecy_fulfilled", 0)), "broken": int(counts.get("prophecy_broken", 0)),
 		"avg_prophecy_years": 0.0 if prophecy_years.is_empty() else float(prophecy_years.reduce(func(a: int, b: int) -> int: return a + b, 0)) / prophecy_years.size(),
 		"dilemmas": int(counts.get("dilemma", 0)),
+		"low_water": int(counts.get("water_low", 0)), "moves": int(counts.get("tribe_moved", 0)),
+		"wars": int(counts.get("war", 0)), "merges": int(counts.get("tribes_merged", 0)),
 	}

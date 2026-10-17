@@ -25,8 +25,8 @@
 							"additionalProperties": false,
 							"required": ["type", "tribe", "amount"],
 							"properties": {
-								"type": {"type": "string", "enum": ["food", "population", "split", "rain", "influence", "kindness"]},
-								"tribe": {"type": "string", "description": "Tribe name for food, population and split; empty string otherwise."},
+								"type": {"type": "string", "enum": ["food", "population", "split", "rain", "influence", "kindness", "relation"]},
+								"tribe": {"type": "string", "description": "Tribe name for food, population, split and relation; empty string otherwise."},
 								"amount": {"type": "number"}
 							}
 						}

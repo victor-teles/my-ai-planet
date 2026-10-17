@@ -21,6 +21,8 @@ var _clouds := Node3D.new()
 var _sun := DirectionalLight3D.new()
 var _rain := CPUParticles3D.new()
 var _selected := ""
+var _pond: MeshInstance3D
+var _springs: Array[Node3D] = [] ## water source index - 1 -> spring pool
 
 
 func build(seed_value: int) -> void:
@@ -79,6 +81,22 @@ func sync(state: WorldState, delta: float) -> void:
 	ToonMaterials.set_dryness(_dryness)
 	_clouds.rotation.y += delta * 0.01
 	_rain.emitting = state.blessed_rain_months > 0
+	_sync_water(state, delta)
+
+
+## The pond sinks and shrinks as its level falls; spring pools shrink away to nothing.
+func _sync_water(state: WorldState, delta: float) -> void:
+	var pond_level := state.water_level[0]
+	_pond.position.y = move_toward(_pond.position.y, IslandShape.WATER_LEVEL - (1.0 - pond_level) * 0.32, delta * 0.3)
+	var pond_scale := lerpf(0.55, 1.0, pond_level)
+	_pond.scale.x = move_toward(_pond.scale.x, pond_scale, delta * 0.3)
+	_pond.scale.z = _pond.scale.x
+	for w: int in range(1, state.water_names.size()):
+		while _springs.size() < w:
+			_springs.append(_build_spring(shape.spring_spot(_springs.size())))
+		var pool := _springs[w - 1].get_node("Pool") as Node3D
+		var size := lerpf(0.15, 1.0, sqrt(state.water_level[w]))
+		pool.scale = pool.scale.move_toward(Vector3(size, 1.0, size), delta * 0.3)
 
 
 ## Skip the pop-ups for events that happened before the view existed (e.g. after loading).
@@ -124,18 +142,9 @@ func _build_island(seed_value: int) -> void:
 	island.material_override = ToonMaterials.get_material(Color.WHITE, 0.06, true)
 	add_child(island)
 
-	var water := MeshInstance3D.new()
-	var disc := CylinderMesh.new()
-	disc.top_radius = IslandShape.POND_RADIUS * 1.15
-	disc.bottom_radius = disc.top_radius
-	disc.height = 0.01
-	disc.radial_segments = 48
-	water.mesh = disc
-	var water_material := ShaderMaterial.new()
-	water_material.shader = WATER_SHADER
-	water.material_override = water_material
-	water.position = Vector3(IslandShape.POND_CENTER.x, IslandShape.WATER_LEVEL, IslandShape.POND_CENTER.y)
-	add_child(water)
+	_pond = _water_disc(IslandShape.POND_RADIUS * 1.15)
+	_pond.position = Vector3(IslandShape.POND_CENTER.x, IslandShape.WATER_LEVEL, IslandShape.POND_CENTER.y)
+	add_child(_pond)
 
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value + 3
@@ -161,6 +170,38 @@ func _build_island(seed_value: int) -> void:
 		prop.rotation.y = rng.randf() * TAU
 		add_child(prop)
 		placed += 1
+
+
+func _water_disc(radius: float) -> MeshInstance3D:
+	var water := MeshInstance3D.new()
+	var disc := CylinderMesh.new()
+	disc.top_radius = radius
+	disc.bottom_radius = radius
+	disc.height = 0.01
+	disc.radial_segments = 48
+	water.mesh = disc
+	var water_material := ShaderMaterial.new()
+	water_material.shader = WATER_SHADER
+	water.material_override = water_material
+	return water
+
+
+## A small pool ringed with stones.
+func _build_spring(spot: Vector3) -> Node3D:
+	var spring := Node3D.new()
+	spring.position = spot
+	var pool := _water_disc(0.62)
+	pool.name = "Pool"
+	pool.position.y = 0.06
+	spring.add_child(pool)
+	for i: int in 9:
+		var angle := TAU * i / 9.0
+		var stone := Props.rock(0.32)
+		stone.position = Vector3(cos(angle) * 0.75, 0.0, sin(angle) * 0.75)
+		stone.rotation.y = angle * 2.0
+		spring.add_child(stone)
+	add_child(spring)
+	return spring
 
 
 func _build_clouds(seed_value: int) -> void:
@@ -230,6 +271,17 @@ func _show_event(event: Dictionary) -> void:
 			text = "The rains return"
 		"dilemma":
 			text = "The god decides: %s" % data["choice"]
+		"war":
+			text = "War! The %s defeat the %s" % [data["winner"], data["loser"]]
+			where = _camp_position(String(data["loser"]))
+		"tribes_merged":
+			text = "The %s join the %s" % [data["from"], data["into"]]
+			where = _camp_position(String(data["into"]))
+		"tribe_moved":
+			text = "The %s go to drink from %s" % [data["tribe"], data["water"]]
+			where = _camp_position(String(data["tribe"]))
+		"water_low":
+			text = "%s is running low" % String(data["water"]).capitalize()
 		"miracle":
 			match String(data["miracle"]):
 				"rain":

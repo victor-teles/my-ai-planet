@@ -4,9 +4,12 @@ extends RefCounted
 ## Tribes are stored as parallel packed arrays (index i is the same tribe in every
 ## array) instead of one object per tribe, so the sim stays fast in GDScript.
 
-const SAVE_VERSION := 1
+const SAVE_VERSION := 2
 const MONTHS_PER_YEAR := 12
 const MAX_EVENTS := 200
+## Saved floats are kept on a grid of 1/1024: Godot's JSON writer misprints the last digit of
+## about a quarter of arbitrary doubles, but numbers on this grid survive a round trip bit for bit.
+const FLOAT_STEP := 1.0 / 1024.0
 
 var seed_value: int = 0
 var tick: int = 0
@@ -20,6 +23,17 @@ var drought_months_left: int = 0
 var tribe_names := PackedStringArray()
 var tribe_population := PackedInt32Array()
 var tribe_food := PackedFloat64Array() ## stored food, in person-months
+var tribe_water := PackedInt32Array() ## index of the water source the tribe drinks from
+
+# Water sources: the pond and the springs. Rain fills them, drinking empties them.
+var water_names := PackedStringArray()
+var water_capacity := PackedFloat64Array() ## people a full source can serve without falling
+var water_level := PackedFloat64Array() ## 0 is dry, 1 is full
+
+## How the tribes feel about each other: "A|B" (names sorted) -> -100 (blood feud) to 100 (kin).
+## Pairs that aren't here are 0, so a new tribe starts as strangers to everyone.
+var relations: Dictionary = {}
+const KIN_RELATION := 25 ## a tribe that splits off starts out this friendly with the one it left
 
 # The player god
 const MAX_INFLUENCE := 12.0
@@ -43,7 +57,10 @@ static func create(new_seed: int) -> WorldState:
 	var state := WorldState.new()
 	state.seed_value = new_seed
 	state.rng = SimRng.new(new_seed)
-	state.add_tribe(NameGen.tribe_name(state.rng), 30, 60.0)
+	state.add_water("the Pond", 260.0)
+	state.add_water("%s Spring" % NameGen.tribe_name(state.rng), 130.0)
+	state.add_water("%s Spring" % NameGen.tribe_name(state.rng), 130.0)
+	state.add_tribe(NameGen.tribe_name(state.rng), 30, 60.0, 0)
 	return state
 
 
@@ -66,7 +83,17 @@ func tone() -> int:
 	var level := 2.0 - kindness / 3.0
 	if drought_months_left > 0:
 		level += 0.5
+	if ticks_since("war") < 10 * MONTHS_PER_YEAR:
+		level += 0.5
 	return clampi(roundi(level), 1, 5)
+
+
+## Ticks since the newest event of this type that is still in the log, or a huge number if none is.
+func ticks_since(type: String) -> int:
+	for j: int in range(events.size() - 1, -1, -1):
+		if events[j]["type"] == type:
+			return tick - int(events[j]["tick"])
+	return 1 << 30
 
 
 func tribe_index(tribe_name: String) -> int:
@@ -84,20 +111,109 @@ func total_population() -> int:
 	return total
 
 
-func add_tribe(tribe_name: String, population: int, food: float) -> int:
+func add_tribe(tribe_name: String, population: int, food: float, water: int) -> int:
 	tribe_names.append(tribe_name)
 	tribe_population.append(population)
 	tribe_food.append(food)
+	tribe_water.append(water)
 	return tribe_names.size() - 1
 
 
 func remove_tribe(index: int) -> void:
+	var gone := tribe_names[index]
+	for key: String in relations.keys():
+		if gone in key.split("|"):
+			relations.erase(key)
 	tribe_names.remove_at(index)
 	tribe_population.remove_at(index)
 	tribe_food.remove_at(index)
+	tribe_water.remove_at(index)
+
+
+## Part of a tribe leaves with its share of the food and founds a new tribe at the water
+## source with the most room. Returns the new tribe's index.
+func split_tribe(index: int, leaving: int) -> int:
+	var food := tribe_food[index] * leaving / tribe_population[index]
+	tribe_population[index] -= leaving
+	tribe_food[index] -= food
+	var new_name := NameGen.tribe_name(rng)
+	var new_index := add_tribe(new_name, leaving, food, roomiest_water())
+	set_relation(tribe_names[index], new_name, KIN_RELATION)
+	log_event("tribe_split", {"from": tribe_names[index], "to": new_name, "people": leaving})
+	return new_index
+
+
+func add_water(water_name: String, capacity: float) -> void:
+	water_names.append(water_name)
+	water_capacity.append(capacity)
+	water_level.append(1.0)
+
+
+func drinkers(water: int) -> int:
+	var total := 0
+	for i: int in tribe_count():
+		if tribe_water[i] == water:
+			total += tribe_population[i]
+	return total
+
+
+## The water source that could take the most extra people right now.
+func roomiest_water() -> int:
+	var best := 0
+	var best_room := -INF
+	for w: int in water_names.size():
+		var room := water_capacity[w] * water_level[w] - drinkers(w)
+		if room > best_room:
+			best = w
+			best_room = room
+	return best
+
+
+static func relation_key(a: String, b: String) -> String:
+	return "%s|%s" % [a, b] if a < b else "%s|%s" % [b, a]
+
+
+func relation(a: String, b: String) -> int:
+	return int(relations.get(relation_key(a, b), 0))
+
+
+func set_relation(a: String, b: String, value: int) -> void:
+	var key := relation_key(a, b)
+	value = clampi(value, -100, 100)
+	if value == 0:
+		relations.erase(key)
+	else:
+		relations[key] = value
+
+
+func change_relation(a: String, b: String, delta: int) -> void:
+	set_relation(a, b, relation(a, b) + delta)
+
+
+## A word for a relation, for the AI and the UI.
+static func relation_word(value: int) -> String:
+	if value <= -60:
+		return "blood feud"
+	if value <= -25:
+		return "rivals"
+	if value < 25:
+		return "wary" if value < 0 else "neutral"
+	if value < 60:
+		return "friends"
+	return "kin"
 
 
 ## Event data must hold only strings and whole numbers so it survives a JSON round trip.
+## Snaps every saved float to FLOAT_STEP. Runs after each tick and each player action.
+func settle() -> void:
+	rainfall = snappedf(rainfall, FLOAT_STEP)
+	influence = snappedf(influence, FLOAT_STEP)
+	for i: int in tribe_count():
+		tribe_food[i] = snappedf(tribe_food[i], FLOAT_STEP)
+	for w: int in water_names.size():
+		water_level[w] = snappedf(water_level[w], FLOAT_STEP)
+
+
 func log_event(type: String, data: Dictionary = {}) -> void:
 	events.append({"id": next_event_id, "tick": tick, "type": type, "data": data})
 	next_event_id += 1
@@ -114,7 +230,19 @@ func summarize(recent_event_count: int = 10) -> Dictionary:
 			"name": tribe_names[i],
 			"population": population,
 			"food_months": snappedf(tribe_food[i] / maxf(population, 1.0), 0.1),
+			"drinks_from": water_names[tribe_water[i]],
+			"mood": Needs.mood_word(Needs.mood(self, i)),
 		})
+	var water: Array[Dictionary] = []
+	for w: int in water_names.size():
+		water.append({"name": water_names[w], "fullness": snappedf(water_level[w], 0.01), "drinkers": drinkers(w)})
+	var bonds: Array[Dictionary] = []
+	var keys := relations.keys()
+	keys.sort()
+	for key: String in keys:
+		var value := int(relations[key])
+		if absi(value) >= 25:
+			bonds.append({"tribes": key.split("|"), "relation": value, "word": relation_word(value)})
 	var recent: Array[Dictionary] = []
 	for event: Dictionary in events.slice(maxi(events.size() - recent_event_count, 0)):
 		recent.append({"year": year_of(int(event["tick"])), "type": event["type"], "data": event["data"]})
@@ -124,6 +252,8 @@ func summarize(recent_event_count: int = 10) -> Dictionary:
 		"in_drought": drought_months_left > 0,
 		"total_population": total_population(),
 		"tribes": tribes,
+		"water_sources": water,
+		"relations": bonds,
 		"god": {"influence": snappedf(influence, 0.1), "kindness": kindness},
 		"recent_events": recent,
 	}
@@ -140,6 +270,11 @@ func to_dict() -> Dictionary:
 		"tribe_names": Array(tribe_names),
 		"tribe_population": Array(tribe_population),
 		"tribe_food": Array(tribe_food),
+		"tribe_water": Array(tribe_water),
+		"water_names": Array(water_names),
+		"water_capacity": Array(water_capacity),
+		"water_level": Array(water_level),
+		"relations": relations,
 		"events": events,
 		"next_event_id": next_event_id,
 		"influence": influence,
@@ -163,6 +298,12 @@ static func from_dict(data: Dictionary) -> WorldState:
 	state.tribe_names = PackedStringArray(data["tribe_names"])
 	state.tribe_population = PackedInt32Array(data["tribe_population"])
 	state.tribe_food = PackedFloat64Array(data["tribe_food"])
+	state.tribe_water = PackedInt32Array(data["tribe_water"])
+	state.water_names = PackedStringArray(data["water_names"])
+	state.water_capacity = PackedFloat64Array(data["water_capacity"])
+	state.water_level = PackedFloat64Array(data["water_level"])
+	for key: String in data["relations"]:
+		state.relations[key] = int(data["relations"][key])
 	state.next_event_id = int(data["next_event_id"])
 	state.influence = float(data["influence"])
 	state.kindness = int(data["kindness"])

@@ -8,10 +8,12 @@ const POND_CENTER := Vector2(-3.4, 2.6)
 const POND_RADIUS := 2.3
 const WATER_LEVEL := 0.42
 const CAMP_SLOTS := 12
+const SPRING_SPOTS := 4
 
 var _bumps := FastNoiseLite.new()
 var _outline := FastNoiseLite.new()
 var _camp_slots: Array[Vector3] = []
+var _spring_spots: Array[Vector3] = []
 
 
 func _init(seed_value: int) -> void:
@@ -21,6 +23,7 @@ func _init(seed_value: int) -> void:
 	_outline.seed = seed_value + 1
 	_outline.frequency = 0.9
 	_camp_slots = _find_camp_slots()
+	_spring_spots = _find_spring_spots()
 
 
 ## Distance from the center to the island's edge in a direction.
@@ -55,10 +58,39 @@ func camp_slot(index: int) -> Vector3:
 
 
 func is_near_camp(x: float, z: float, distance: float) -> bool:
-	for slot: Vector3 in _camp_slots:
+	for slot: Vector3 in _camp_slots + _spring_spots:
 		if Vector2(slot.x, slot.z).distance_to(Vector2(x, z)) < distance:
 			return true
 	return false
+
+
+## Where the springs bubble up, away from the camps and the pond.
+func spring_spot(index: int) -> Vector3:
+	return _spring_spots[index % _spring_spots.size()]
+
+
+## Walks around the island at two thirds of its radius, keeping spots clear of camps and each other.
+func _find_spring_spots() -> Array[Vector3]:
+	var spots: Array[Vector3] = []
+	for i: int in 72:
+		if spots.size() >= SPRING_SPOTS:
+			break
+		var angle := TAU * i / 72.0 + 0.3
+		var radius := edge_radius(angle) * 0.62
+		var x := cos(angle) * radius
+		var z := sin(angle) * radius
+		if not is_buildable(x, z, 1.4) or Vector2(x, z).distance_to(POND_CENTER) < POND_RADIUS + 1.5:
+			continue
+		var crowded := false
+		for other: Vector3 in _camp_slots + spots:
+			if Vector2(other.x, other.z).distance_to(Vector2(x, z)) < 2.6:
+				crowded = true
+				break
+		if not crowded:
+			spots.append(surface_point(x, z))
+	if spots.is_empty():
+		spots.append(surface_point(POND_CENTER.x, POND_CENTER.y))
+	return spots
 
 
 ## Golden-angle spiral from the center, keeping only buildable spots far enough apart.

@@ -15,4 +15,5 @@ func step(state: WorldState) -> void:
 	for system: SimSystem in _systems:
 		if state.tick % system.get_interval() == 0:
 			system.update(state)
+	state.settle()
 	state.tick += 1

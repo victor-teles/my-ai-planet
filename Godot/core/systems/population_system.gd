@@ -1,7 +1,6 @@
 class_name PopulationSystem
 extends SimSystem
-## Gathering, eating, births, deaths, famine, and tribes splitting when they grow large.
-## Numbers are first-pass placeholders; balancing happens in M2.
+## Gathering, eating, drinking, births, deaths, famine, and tribes splitting when they grow large.
 
 const FOOD_EATEN_PER_PERSON := 1.0 ## per month
 const FOOD_GATHERED_PER_PERSON := 1.5 ## per month, at normal rain and no crowding
@@ -14,6 +13,8 @@ const DEATH_RATE := 0.0025 ## per person per month
 const STARVATION_RATE := 0.1 ## share of the food shortfall that becomes deaths
 const SPLIT_AT_POPULATION := 80
 const SPLIT_CHANCE_PER_YEAR := 0.5
+const THIRSTY_GATHERING := 0.5 ## share of food a tribe with no water left can still gather
+const THIRST_DEATH_FACTOR := 2.0 ## extra deaths at no water, as a multiple of DEATH_RATE
 
 
 func get_id() -> String:
@@ -39,11 +40,18 @@ func _recent_famine(state: WorldState, tribe_name: String) -> bool:
 	return false
 
 
+## 1 with plenty of room, falling as the tribe and the valley fill up.
+static func crowding(state: WorldState, i: int, valley_population: int = -1) -> float:
+	if valley_population < 0:
+		valley_population = state.total_population()
+	return 1.0 / (1.0 + state.tribe_population[i] / TRIBE_CAPACITY + valley_population / VALLEY_CAPACITY)
+
+
 func _update_tribe(state: WorldState, i: int, valley_population: int) -> void:
 	var population := state.tribe_population[i]
-	var crowding := 1.0 / (1.0 + population / TRIBE_CAPACITY + valley_population / VALLEY_CAPACITY)
+	var water := Needs.water(state, i)
 	var food := state.tribe_food[i]
-	food += population * FOOD_GATHERED_PER_PERSON * state.rainfall * crowding
+	food += population * FOOD_GATHERED_PER_PERSON * state.rainfall * crowding(state, i, valley_population) * lerpf(THIRSTY_GATHERING, 1.0, water)
 	food -= population * FOOD_EATEN_PER_PERSON
 
 	var fed := food >= 0.0
@@ -56,7 +64,8 @@ func _update_tribe(state: WorldState, i: int, valley_population: int) -> void:
 
 	var birth_rate := BIRTH_RATE if fed else BIRTH_RATE * HUNGRY_BIRTH_FACTOR
 	population += state.rng.round_stochastic(population * birth_rate)
-	population -= mini(state.rng.round_stochastic(population * DEATH_RATE), population)
+	var death_rate := DEATH_RATE * (1.0 + THIRST_DEATH_FACTOR * (1.0 - water))
+	population -= mini(state.rng.round_stochastic(population * death_rate), population)
 	food = minf(food, population * MAX_STORED_MONTHS)
 
 	if population <= 0:
@@ -69,10 +78,4 @@ func _update_tribe(state: WorldState, i: int, valley_population: int) -> void:
 
 	if state.month() == 0 and population >= SPLIT_AT_POPULATION and state.rng.chance(SPLIT_CHANCE_PER_YEAR):
 		@warning_ignore("integer_division")
-		var leaving := population / 2
-		var food_taken := food * leaving / population
-		state.tribe_population[i] = population - leaving
-		state.tribe_food[i] = food - food_taken
-		var new_name := NameGen.tribe_name(state.rng)
-		state.add_tribe(new_name, leaving, food_taken)
-		state.log_event("tribe_split", {"from": state.tribe_names[i], "to": new_name, "people": leaving})
+		state.split_tribe(i, population / 2)

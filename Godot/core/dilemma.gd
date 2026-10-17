@@ -11,6 +11,7 @@ const EFFECTS := {
 	"rain": [-12.0, 12.0, false], ## + months of blessed rain, - months of drought
 	"influence": [-3.0, 3.0, false],
 	"kindness": [-2.0, 2.0, false],
+	"relation": [-40.0, 40.0, true], ## how the card's tribe and this tribe feel about each other
 }
 const MIN_SPLIT_POPULATION := 20
 
@@ -35,7 +36,7 @@ static func from_proposal(proposal: Dictionary, state: WorldState) -> Dilemma:
 			continue
 		var effects: Array[Dictionary] = []
 		for effect: Variant in raw.get("effects", []):
-			var clean := _clean_effect(effect, state)
+			var clean := _clean_effect(effect, state, dilemma.tribe)
 			if not clean.is_empty():
 				effects.append(clean)
 		var label := String(raw.get("label", "")).strip_edges()
@@ -46,13 +47,15 @@ static func from_proposal(proposal: Dictionary, state: WorldState) -> Dilemma:
 	return dilemma
 
 
-static func _clean_effect(effect: Variant, state: WorldState) -> Dictionary:
+static func _clean_effect(effect: Variant, state: WorldState, card_tribe: String) -> Dictionary:
 	if not effect is Dictionary or not EFFECTS.has(effect.get("type")):
 		return {}
 	var type := String(effect["type"])
 	var rule: Array = EFFECTS[type]
 	var target := String(effect.get("tribe", ""))
 	if rule[2] and state.tribe_index(target) == -1:
+		return {}
+	if type == "relation" and (card_tribe.is_empty() or card_tribe == target):
 		return {}
 	var amount := clampf(float(effect.get("amount", 0.0)), rule[0], rule[1])
 	return {"type": type, "tribe": target if rule[2] else "", "amount": amount}
@@ -75,6 +78,7 @@ func choose(state: WorldState, index: int) -> void:
 	for effect: Dictionary in choice["effects"]:
 		_apply(state, effect)
 	state.log_event("dilemma", {"title": title, "choice": choice["label"]})
+	state.settle()
 
 
 func _apply(state: WorldState, effect: Dictionary) -> void:
@@ -90,13 +94,7 @@ func _apply(state: WorldState, effect: Dictionary) -> void:
 		"split":
 			if i != -1 and state.tribe_population[i] >= MIN_SPLIT_POPULATION:
 				@warning_ignore("integer_division")
-				var leaving := state.tribe_population[i] / 3
-				var food := state.tribe_food[i] * leaving / state.tribe_population[i]
-				state.tribe_population[i] -= leaving
-				state.tribe_food[i] -= food
-				var new_name := NameGen.tribe_name(state.rng)
-				state.add_tribe(new_name, leaving, food)
-				state.log_event("tribe_split", {"from": state.tribe_names[i], "to": new_name, "people": leaving})
+				state.split_tribe(i, state.tribe_population[i] / 3)
 		"rain":
 			if amount > 0.0:
 				state.drought_months_left = 0
@@ -108,3 +106,6 @@ func _apply(state: WorldState, effect: Dictionary) -> void:
 			state.influence = clampf(state.influence + amount, 0.0, WorldState.MAX_INFLUENCE)
 		"kindness":
 			state.kindness += roundi(amount)
+		"relation":
+			if i != -1 and state.tribe_index(tribe) != -1:
+				state.change_relation(tribe, effect["tribe"], roundi(amount))
