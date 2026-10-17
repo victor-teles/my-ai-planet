@@ -1,7 +1,8 @@
 class_name AIProviders
 extends RefCounted
 ## Picks a provider until the AI Settings screen exists (M3).
-## MYAIPLANET_AI = offline | anthropic | claude_code. Unset: API key, then Claude Code, then offline.
+## MYAIPLANET_AI = offline | anthropic | claude_code | grok_cli.
+## Unset: API key, then Claude Code, then Grok CLI, then offline.
 
 
 static func from_environment() -> AIProvider:
@@ -13,9 +14,11 @@ static func from_environment() -> AIProvider:
 			return anthropic
 		"claude_code":
 			return ClaudeCodeProvider.new()
+		"grok_cli":
+			return GrokCliProvider.new()
 	if anthropic.is_available():
 		return anthropic
-	var claude_code := ClaudeCodeProvider.new()
-	if claude_code.is_available():
-		return claude_code
+	for cli: CliAIProvider in [ClaudeCodeProvider.new(), GrokCliProvider.new()]:
+		if cli.is_available():
+			return cli
 	return OfflineTemplatesProvider.new()

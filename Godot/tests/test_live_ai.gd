@@ -29,5 +29,9 @@ func test_claude_code_cli() -> void:
 	await _check_provider(ClaudeCodeProvider.new())
 
 
+func test_grok_cli() -> void:
+	await _check_provider(GrokCliProvider.new())
+
+
 func test_anthropic_api() -> void:
 	await _check_provider(AnthropicProvider.new(OS.get_environment("ANTHROPIC_API_KEY")))

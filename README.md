@@ -18,10 +18,10 @@ Open `Godot/` in Godot 4.7, then press Play. The current build is the M0 debug v
 Until the AI Settings screen exists, the provider comes from environment variables:
 
 - `ANTHROPIC_API_KEY` set: uses the Claude API.
-- Otherwise, if the `claude` CLI is installed: uses Claude Code with your existing login.
+- Otherwise, if the `claude` or `grok` CLI is installed: uses it with your existing login (Claude Code first).
 - Otherwise: offline templates.
 
-Force one with `MYAIPLANET_AI=offline|anthropic|claude_code`.
+Force one with `MYAIPLANET_AI=offline|anthropic|claude_code|grok_cli`.
 
 ## Tests
 
