@@ -181,8 +181,9 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 - [x] One floating-island diorama as a target "beauty shot" (procedural placeholder geometry, see `docs/screenshots/`)
 - [x] The live sim drawn on the island: camps, huts and hopping people grow with each tribe; drought turns the grass to straw; events pop up as floating text
 - [x] Palette and lighting for Era 3, written down in `docs/ART_BIBLE.md`
-- [x] Low-poly 3D villagers with adult proportions (Kenney's CC0 animated character, our own painted tribal skins; tunic, hair and skin tone vary per tribe and person; chiefs wear a feathered headdress), and a painted brush-stroke texture on every toon surface
-- [ ] Painted trees, huts and rocks to replace the last primitive placeholders
+- [x] Low-poly 3D villagers (Kenney's CC0 animated character with painted tribal skins): women and men, children, elders who grey and stoop, five ancestries, slim to stout builds, long hair, buns, braids and beards; chiefs wear a feathered headdress
+- [x] Trees, undergrowth, rocks, tents and campfires from Kenney's CC0 Nature and Survival kits, restyled to the toon palette with ink outlines; a painted brush-stroke texture on every toon surface
+- [ ] A real walk cycle (the walk is a slowed run blended with idle) and level of detail for villagers far from the camera
 
 **Exit:** one screenshot that looks good enough to post publicly.
 

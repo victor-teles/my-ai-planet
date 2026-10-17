@@ -12,14 +12,16 @@ static var _cache: Dictionary = {}
 
 
 ## outline_width 0 means no outline. vegetation materials respond to drought.
-static func get_material(tint: Color, outline_width: float = 0.03, vegetation: bool = false) -> ShaderMaterial:
-	var key := "%s|%s|%s" % [tint.to_html(), outline_width, vegetation]
+static func get_material(tint: Color, outline_width: float = 0.03, vegetation: bool = false, texture: Texture2D = null) -> ShaderMaterial:
+	var key := "%s|%s|%s|%s" % [tint.to_html(), outline_width, vegetation, texture.resource_path if texture else ""]
 	if _cache.has(key):
 		return _cache[key]
 	var material := ShaderMaterial.new()
 	material.shader = TOON_SHADER
 	material.set_shader_parameter("tint", tint)
 	material.set_shader_parameter("brush_strokes", BRUSH_STROKES)
+	if texture:
+		material.set_shader_parameter("albedo_texture", texture)
 	if outline_width > 0.0:
 		var outline := ShaderMaterial.new()
 		outline.shader = OUTLINE_SHADER
@@ -30,6 +32,18 @@ static func get_material(tint: Color, outline_width: float = 0.03, vegetation: b
 		material.set_meta("vegetation", true)
 	_cache[key] = material
 	return material
+
+
+## Just the ink outline, for a separate hull mesh (see Kit): flat-shaded models crack the hull otherwise.
+static func outline(width: float) -> ShaderMaterial:
+	var key := "outline|%s" % width
+	if not _cache.has(key):
+		var material := ShaderMaterial.new()
+		material.shader = OUTLINE_SHADER
+		material.set_shader_parameter("color", INK)
+		material.set_shader_parameter("width", width)
+		_cache[key] = material
+	return _cache[key]
 
 
 static func cloud() -> ShaderMaterial:

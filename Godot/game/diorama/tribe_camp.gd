@@ -1,26 +1,30 @@
 class_name TribeCamp
 extends Node3D
-## One tribe on the island: a campfire, huts that grow with the population, and its citizens
-## wandering around the fire, one figure each. Visual only: randomness here never touches the simulation.
+## One tribe on the island: a campfire, tents that grow with the population, its citizens
+## wandering around the fire (one figure each), and a few children playing. Visual only:
+## randomness here never touches the simulation.
 
 const PEOPLE_PER_HUT := 14
 const MAX_HUTS := 6
 const WANDER_RADIUS := 1.6
 const WALK_SPEED := 0.45 ## world units per second
+const CHILD_SPEED := 0.75
+const PEOPLE_PER_CHILD := 15 ## one child figure for this many people
+const MAX_CHILDREN := 4
 
 var tribe_name: String
 var shape: IslandShape
 var tunic: Color
-var roof: Color
+var canvas: Color ## tent canvas: undyed linen, tinted with the tribe's color
 
 var _rng := RandomNumberGenerator.new()
 var _fire: Node3D
 var _huts: Array[Node3D] = []
-var _people: Dictionary = {} ## citizen id -> figure
+var _people: Dictionary = {} ## citizen id -> figure; children (not citizens) have negative ids
+var _looks: Dictionary = {} ## citizen id -> what their figure was built as, to rebuild when it changes
 var _targets: Dictionary = {} ## citizen id -> where the figure is walking
 var _rests: Dictionary = {} ## citizen id -> seconds left standing before walking on
 var _walking: Dictionary = {} ## citizen id -> 0 standing .. 1 walking, eased
-var _chief_id := -1
 var _selection_ring: MeshInstance3D
 var _focus_ring: MeshInstance3D
 
@@ -31,10 +35,18 @@ func setup(name_of_tribe: String, island: IslandShape) -> void:
 	_rng.seed = hash(name_of_tribe)
 	var hue := fposmod(float(hash(name_of_tribe) % 1000) / 1000.0, 1.0)
 	tunic = Color.from_hsv(hue, 0.55, 0.85)
-	roof = Props.THATCH.lerp(Color.from_hsv(hue, 0.5, 0.75), 0.25)
+	canvas = Props.LINEN.lerp(Color.from_hsv(hue, 0.6, 0.85), 0.45)
 	_fire = Props.campfire()
 	add_child(_fire)
 	_pop_in(_fire)
+	# A few belongings around the fire: firewood, pots, a bedroll, a spit.
+	for i: int in 3:
+		var clutter := Props.camp_clutter(_rng)
+		var angle := _rng.randf() * TAU
+		clutter.position = Vector3(cos(angle), 0.0, sin(angle)) * _rng.randf_range(0.45, 0.7)
+		clutter.position.y = _ground(clutter.position)
+		clutter.rotation.y = _rng.randf() * TAU
+		add_child(clutter)
 
 
 func set_population(population: int) -> void:
@@ -43,23 +55,32 @@ func set_population(population: int) -> void:
 		_add_hut()
 	while _huts.size() > hut_count:
 		_huts.pop_back().queue_free()
+	var children := clampi(population / PEOPLE_PER_CHILD, 0, MAX_CHILDREN)
+	for k: int in range(1, MAX_CHILDREN + 1):
+		if k <= children and not _people.has(-k):
+			_add_figure(-k, VillagerArt.child_appearance(hash([tribe_name, k]), tunic))
+		elif k > children and _people.has(-k):
+			_remove_person(-k)
 
 
-## Keeps one figure per citizen: newcomers pop in, the departed shrink away, and the chief
-## wears the feathered headband.
-func set_citizens(ids: PackedInt32Array, chief_id: int) -> void:
+## Keeps one figure per citizen: newcomers pop in and the departed shrink away. people maps
+## citizen id -> {"female", "age", "chief"}; a figure is rebuilt when its looks change (a new
+## chief puts on the headdress, hair greys with age).
+func set_citizens(people: Dictionary) -> void:
 	for id: int in _people.keys():
-		if id not in ids:
+		if id >= 0 and not people.has(id):
 			_remove_person(id)
-	for id: int in ids:
-		if not _people.has(id):
-			_add_person(id, id == chief_id)
-	if chief_id != _chief_id:
-		var old_chief := _chief_id
-		_chief_id = chief_id
-		for id: int in [old_chief, chief_id]:
-			if _people.has(id):
-				_replace_figure(id) # puts on (or takes off) the headdress
+	for id: int in people:
+		var info: Dictionary = people[id]
+		var key := VillagerArt.looks_key(info["age"], info["chief"])
+		if _looks.get(id, "") == key:
+			continue
+		var looks := VillagerArt.appearance(id, info["female"], info["age"], info["chief"], tunic)
+		if _people.has(id):
+			_replace_figure(id, looks)
+		else:
+			_add_figure(id, looks)
+		_looks[id] = key
 
 
 ## The figure of a citizen, or null if this camp doesn't have them.
@@ -68,7 +89,7 @@ func figure(id: int) -> Node3D:
 
 
 func citizen_ids() -> Array:
-	return _people.keys()
+	return _people.keys().filter(func(id: int) -> bool: return id >= 0)
 
 
 ## Puts a ring under the citizen being inspected, if they are in this camp. Cheap to call every frame.
@@ -120,28 +141,30 @@ func _walk(id: int, delta: float) -> void:
 		return
 	if not moving:
 		_targets[id] = _random_spot()
-		_rests[id] = _rng.randf_range(0.5, 4.0)
+		_rests[id] = _rng.randf_range(0.2, 1.0) if id < 0 else _rng.randf_range(0.5, 4.0) # children hardly stop
 		return
-	var step := to_target.normalized() * minf(WALK_SPEED * float(_walking[id]) * delta, to_target.length())
+	var speed := CHILD_SPEED if id < 0 else WALK_SPEED
+	var step := to_target.normalized() * minf(speed * float(_walking[id]) * delta, to_target.length())
 	person.position += step
 	person.position.y = _ground(person.position)
 	person.rotation.y = lerp_angle(person.rotation.y, atan2(to_target.x, to_target.z), minf(delta * 8.0, 1.0))
 
 
 func _add_hut() -> void:
-	var hut := Props.hut(roof)
+	var hut := Props.tent(_huts.size() + _rng.randi_range(0, 1), canvas)
 	var angle := TAU * _huts.size() / MAX_HUTS + 0.4
-	var radius := 1.0 + 0.18 * (_huts.size() % 2)
+	var radius := 1.25 + 0.2 * (_huts.size() % 2)
 	hut.position = Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
 	hut.position.y = _ground(hut.position)
-	hut.rotation.y = -angle
+	hut.rotation.y = -angle - PI / 2.0 # the tent's door faces the fire
 	add_child(hut)
 	_huts.append(hut)
 	_pop_in(hut)
 
 
-func _add_person(id: int, chief: bool) -> void:
-	var person := _make_figure(id, chief)
+func _add_figure(id: int, looks: Dictionary) -> void:
+	var person := VillagerArt.make(looks)
+	VillagerArt.offset_time(person, _rng.randf() * 2.0)
 	person.position = _random_spot()
 	add_child(person)
 	_people[id] = person
@@ -151,20 +174,9 @@ func _add_person(id: int, chief: bool) -> void:
 	_pop_in(person)
 
 
-## Each citizen always looks the same: their id picks build, hair and skin tone.
-func _make_figure(id: int, chief: bool) -> Node3D:
-	var looks := hash(id * 7919)
-	var person := VillagerArt.make(
-		posmod(id, VillagerArt.LOOKS.size()), chief, tunic,
-		VillagerArt.HAIR_COLORS[posmod(looks, VillagerArt.HAIR_COLORS.size())],
-		VillagerArt.SKIN_TONES[posmod(looks / 7, VillagerArt.SKIN_TONES.size())])
-	VillagerArt.offset_time(person, _rng.randf() * 2.0)
-	return person
-
-
-func _replace_figure(id: int) -> void:
+func _replace_figure(id: int, looks: Dictionary) -> void:
 	var old := _people[id] as Node3D
-	var person := _make_figure(id, id == _chief_id)
+	var person := VillagerArt.make(looks)
 	person.transform = old.transform
 	if _focus_ring and _focus_ring.get_parent() == old:
 		old.remove_child(_focus_ring)
@@ -178,6 +190,7 @@ func _remove_person(id: int) -> void:
 	if _focus_ring and _focus_ring.get_parent() == person:
 		person.remove_child(_focus_ring)
 	_people.erase(id)
+	_looks.erase(id)
 	_targets.erase(id)
 	_rests.erase(id)
 	_walking.erase(id)

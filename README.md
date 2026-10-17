@@ -44,7 +44,7 @@ godot --headless --path Godot -s res://tools/balance_report.gd -- years=300 seed
 
 The brush-stroke texture and the villager skins are painted by scripts: `tools/paint_textures.gd` and `tools/paint_villager_skins.gd` (run with `godot --headless --path Godot -s res://tools/<name>.gd`).
 
-Villagers are built on Kenney's [Animated Characters](https://kenney.nl/assets/animated-characters-protagonists) (CC0).
+Art built on CC0 assets by Kenney: [Animated Characters](https://kenney.nl/assets/animated-characters-protagonists) and [Survivors](https://kenney.nl/assets/animated-characters-survivors) for the villagers, [Nature Kit](https://kenney.nl/assets/nature-kit) and [Survival Kit](https://kenney.nl/assets/survival-kit) for the props.
 
 `scripts/test.sh` uses `godot` from your PATH, or `GODOT_PATH`, or `/Applications/Godot.app`.
 

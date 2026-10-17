@@ -44,6 +44,10 @@ static func traits_of(state: WorldState, c: int) -> PackedStringArray:
 	return state.citizen_traits[c].split("|")
 
 
+static func is_female(state: WorldState, c: int) -> bool:
+	return state.citizen_sexes[c] == "f"
+
+
 static func age(state: WorldState, c: int) -> int:
 	return WorldState.year_of(state.tick - state.citizen_born[c])
 
@@ -94,6 +98,7 @@ static func describe(state: WorldState, c: int) -> Dictionary:
 	return {
 		"name": state.citizen_names[c],
 		"age": age(state, c),
+		"sex": "woman" if is_female(state, c) else "man",
 		"is_chief": chief(state, tribe_name) == c,
 		"traits": Array(traits_of(state, c)),
 		"tribe": tribe_name,

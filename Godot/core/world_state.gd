@@ -4,7 +4,7 @@ extends RefCounted
 ## Tribes are stored as parallel packed arrays (index i is the same tribe in every
 ## array) instead of one object per tribe, so the sim stays fast in GDScript.
 
-const SAVE_VERSION := 2
+const SAVE_VERSION := 3
 const MONTHS_PER_YEAR := 12
 const MAX_EVENTS := 200
 ## Saved floats are kept on a grid of 1/1024: Godot's JSON writer misprints the last digit of
@@ -36,6 +36,7 @@ var citizen_names := PackedStringArray()
 var citizen_tribes := PackedStringArray()
 var citizen_born := PackedInt32Array() ## tick of birth
 var citizen_traits := PackedStringArray() ## two trait ids joined by "|"
+var citizen_sexes := PackedStringArray() ## "f" or "m"
 var next_citizen_id: int = 0
 
 ## How the tribes feel about each other: "A|B" (names sorted) -> -100 (blood feud) to 100 (kin).
@@ -171,6 +172,7 @@ func add_citizen(tribe_name: String, age_years: int) -> int:
 	citizen_tribes.append(tribe_name)
 	citizen_born.append(tick - age_years * MONTHS_PER_YEAR)
 	citizen_traits.append("|".join(Citizens.random_traits(rng)))
+	citizen_sexes.append("f" if rng.chance(0.5) else "m")
 	return id
 
 
@@ -180,6 +182,7 @@ func remove_citizen(c: int) -> void:
 	citizen_tribes.remove_at(c)
 	citizen_born.remove_at(c)
 	citizen_traits.remove_at(c)
+	citizen_sexes.remove_at(c)
 
 
 func citizens_of(tribe_name: String) -> Array[int]:
@@ -336,6 +339,7 @@ func to_dict() -> Dictionary:
 		"citizen_tribes": Array(citizen_tribes),
 		"citizen_born": Array(citizen_born),
 		"citizen_traits": Array(citizen_traits),
+		"citizen_sexes": Array(citizen_sexes),
 		"next_citizen_id": next_citizen_id,
 		"events": events,
 		"next_event_id": next_event_id,
@@ -371,6 +375,7 @@ static func from_dict(data: Dictionary) -> WorldState:
 	state.citizen_tribes = PackedStringArray(data["citizen_tribes"])
 	state.citizen_born = PackedInt32Array(data["citizen_born"])
 	state.citizen_traits = PackedStringArray(data["citizen_traits"])
+	state.citizen_sexes = PackedStringArray(data["citizen_sexes"])
 	state.next_citizen_id = int(data["next_citizen_id"])
 	state.next_event_id = int(data["next_event_id"])
 	state.influence = float(data["influence"])

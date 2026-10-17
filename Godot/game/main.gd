@@ -359,8 +359,12 @@ func _update_inspector() -> void:
 		var tribe := state.citizen_tribes[c]
 		var t := state.tribe_index(tribe)
 		_inspector_name.text = state.citizen_names[c]
-		var role := "Chief of the %s" % tribe if Citizens.chief(state, tribe) == c else "Of the %s" % tribe
-		_inspector_role.text = "%s   ·   %d years old" % [role, Citizens.age(state, c)]
+		var age := Citizens.age(state, c)
+		var person := "woman" if Citizens.is_female(state, c) else "man"
+		if age >= VillagerArt.ELDER_AGE:
+			person = "elder " + person
+		var role := "Chief of the %s" % tribe if Citizens.chief(state, tribe) == c else "%s of the %s" % [person.capitalize(), tribe]
+		_inspector_role.text = "%s   ·   %s, %d years old" % [role, person, age] if role.begins_with("Chief") else "%s   ·   %d years old" % [role, age]
 		for need: String in Needs.NAMES:
 			var value := Needs.get_need(state, t, need)
 			var bar := _need_bars[need] as ProgressBar

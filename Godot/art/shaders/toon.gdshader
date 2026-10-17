@@ -11,6 +11,7 @@ uniform vec4 dry_color : source_color = vec4(0.80, 0.66, 0.40, 1.0);
 uniform vec4 rim_color : source_color = vec4(1.0, 0.80, 0.62, 1.0);
 uniform float rim_amount : hint_range(0.0, 1.0) = 0.25;
 uniform vec4 emission_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+uniform sampler2D albedo_texture : source_color, hint_default_white, filter_linear_mipmap; // e.g. a kit's color atlas
 uniform sampler2D brush_strokes : filter_linear_mipmap, repeat_enable;
 uniform float stroke_scale = 0.35; // texture repeats per world unit
 uniform float stroke_value : hint_range(0.0, 1.0) = 0.22;
@@ -36,7 +37,7 @@ vec2 strokes_at(vec3 position, vec3 normal) {
 }
 
 void fragment() {
-	vec3 base = COLOR.rgb * tint.rgb;
+	vec3 base = COLOR.rgb * tint.rgb * texture(albedo_texture, UV).rgb;
 	vec2 stroke = strokes_at(world_position, world_normal) - 0.5;
 	base *= 1.0 + stroke.x * 2.0 * stroke_value;
 	base = mix(base, base * (stroke.y > 0.0 ? warm_color.rgb : cool_color.rgb) * 1.25, abs(stroke.y) * 2.0 * stroke_warmth);

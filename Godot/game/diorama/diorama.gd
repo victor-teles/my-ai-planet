@@ -6,6 +6,7 @@ extends Node3D
 const SKY_SHADER := preload("res://art/shaders/sky_dusk.gdshader")
 const WATER_SHADER := preload("res://art/shaders/water.gdshader")
 const TREE_COUNT := 70
+const UNDERGROWTH_COUNT := 130 ## bushes, grass, flowers, mushrooms, fallen logs
 const CLOUD_SEA_COUNT := 46
 const POPUP_SECONDS := 3.0
 
@@ -88,21 +89,24 @@ func selected_tribe() -> String:
 
 
 func sync(state: WorldState, delta: float) -> void:
-	var members := {} ## tribe name -> citizen ids
+	var members := {} ## tribe name -> {citizen id -> {"female", "age", "chief"}}
+	var chiefs := {}
+	for tribe: String in state.tribe_names:
+		members[tribe] = {}
+		chiefs[tribe] = Citizens.chief(state, tribe)
 	for c: int in state.citizen_ids.size():
-		if not members.has(state.citizen_tribes[c]):
-			members[state.citizen_tribes[c]] = PackedInt32Array()
-		var ids: PackedInt32Array = members[state.citizen_tribes[c]]
-		ids.append(state.citizen_ids[c])
-		members[state.citizen_tribes[c]] = ids
+		var tribe := state.citizen_tribes[c]
+		if members.has(tribe):
+			(members[tribe] as Dictionary)[state.citizen_ids[c]] = {
+				"female": Citizens.is_female(state, c), "age": Citizens.age(state, c), "chief": chiefs[tribe] == c,
+			}
 	for i: int in state.tribe_count():
 		var tribe := state.tribe_names[i]
 		if not _camps.has(tribe):
 			_add_camp(tribe)
 		var camp := _camps[tribe] as TribeCamp
 		camp.set_population(state.tribe_population[i])
-		var chief := Citizens.chief(state, tribe)
-		camp.set_citizens(members.get(tribe, PackedInt32Array()), state.citizen_ids[chief] if chief != -1 else -1)
+		camp.set_citizens(members[tribe])
 		camp.set_focus(_focused_citizen) # also follows a citizen into a new tribe after a split or merge
 	for tribe: String in _camps.keys():
 		if tribe not in state.tribe_names:
@@ -198,15 +202,30 @@ func _build_island(seed_value: int) -> void:
 			continue
 		var prop: Node3D
 		var roll := rng.randf()
-		if roll < 0.5:
-			prop = Props.pine(rng.randf_range(0.8, 1.3))
-		elif roll < 0.85:
-			prop = Props.round_tree(rng.randf_range(0.8, 1.2))
+		if roll < 0.45:
+			prop = Props.pine(rng)
+		elif roll < 0.8:
+			prop = Props.leafy_tree(rng)
 		else:
-			prop = Props.rock(rng.randf_range(0.6, 1.4))
+			prop = Props.rock(rng)
 		prop.position = shape.surface_point(x, z)
 		prop.rotation.y = rng.randf() * TAU
 		add_child(prop)
+		placed += 1
+	placed = 0
+	for attempt: int in 3000:
+		if placed >= UNDERGROWTH_COUNT:
+			break
+		var angle := rng.randf() * TAU
+		var radius := sqrt(rng.randf()) * IslandShape.RADIUS
+		var x := cos(angle) * radius
+		var z := sin(angle) * radius
+		if not shape.is_buildable(x, z, 0.3) or shape.is_near_camp(x, z, 2.0):
+			continue
+		var plant := Props.undergrowth(rng)
+		plant.position = shape.surface_point(x, z)
+		plant.rotation.y = rng.randf() * TAU
+		add_child(plant)
 		placed += 1
 
 
@@ -226,6 +245,8 @@ func _water_disc(radius: float) -> MeshInstance3D:
 
 ## A small pool ringed with stones.
 func _build_spring(spot: Vector3) -> Node3D:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(spot)
 	var spring := Node3D.new()
 	spring.position = spot
 	var pool := _water_disc(IslandShape.SPRING_RADIUS * 0.8)
@@ -234,7 +255,7 @@ func _build_spring(spot: Vector3) -> Node3D:
 	spring.add_child(pool)
 	for i: int in 9:
 		var angle := TAU * i / 9.0
-		var stone := Props.rock(0.32)
+		var stone := Props.stone(rng)
 		var x := cos(angle) * IslandShape.SPRING_RADIUS
 		var z := sin(angle) * IslandShape.SPRING_RADIUS
 		stone.position = Vector3(x, shape.height_at(spot.x + x, spot.z + z) - spot.y, z)

@@ -1,42 +1,58 @@
 class_name Props
 extends RefCounted
-## Builds small toon props from primitive meshes, shaded with the painterly toon material
-## (stepped light, ink outline, brush strokes). People are drawn billboards: see VillagerArt.
+## The island's props: trees, rocks, undergrowth, tents and campfires from Kenney's kits
+## (see Kit), plus painted clouds and the fire's flame and light.
 
-const PINE := Color(0.20, 0.48, 0.44)
-const LEAF := Color(0.50, 0.72, 0.34)
-const BARK := Color(0.45, 0.30, 0.24)
-const THATCH := Color(0.86, 0.62, 0.36)
-const HUT_WALL := Color(0.70, 0.50, 0.40)
-const STONE := Color(0.62, 0.56, 0.62)
-
-
-static func pine(scale: float) -> Node3D:
-	var root := Node3D.new()
-	root.add_child(_part(_cylinder(0.08, 0.1, 0.5), ToonMaterials.get_material(BARK), Vector3(0, 0.25, 0)))
-	for layer: int in 3:
-		var radius := 0.55 - layer * 0.13
-		var cone := _cylinder(0.0, radius, 0.7)
-		root.add_child(_part(cone, ToonMaterials.get_material(PINE, 0.025, true), Vector3(0, 0.75 + layer * 0.38, 0)))
-	root.scale = Vector3.ONE * scale
-	return root
+const LINEN := Color(0.90, 0.84, 0.72)
+const PINES: Array[String] = ["tree_pineRoundA", "tree_pineRoundC", "tree_pineRoundE", "tree_pineTallA_detailed", "tree_pineTallC_detailed"]
+const LEAFY: Array[String] = ["tree_oak", "tree_default", "tree_detailed", "tree_fat", "tree_oak_dark", "tree_default_dark"]
+const ROCKS: Array[String] = ["rock_largeA", "rock_largeC", "rock_largeE", "rock_smallA", "rock_smallC", "rock_tallA"]
+const UNDERGROWTH: Array[String] = [
+	"plant_bush", "plant_bushLarge", "plant_bushDetailed", "grass_large", "grass", "grass_large",
+	"flower_redA", "flower_yellowA", "flower_purpleA", "mushroom_redGroup", "mushroom_tanGroup", "log", "stump_round",
+]
+const STONES: Array[String] = ["stone_smallA", "stone_smallB", "stone_smallC", "stone_smallFlatA"]
+const TENTS: Array[String] = ["tent_detailedOpen", "tent_smallOpen"]
+const CAMP_CLUTTER: Array[String] = ["log_stack", "pot_large", "pot_small", "bedroll", "campfire-stand", "resource-wood", "stump_round"]
 
 
-static func round_tree(scale: float) -> Node3D:
-	var root := Node3D.new()
-	root.add_child(_part(_cylinder(0.07, 0.1, 0.8), ToonMaterials.get_material(BARK), Vector3(0, 0.4, 0)))
-	root.add_child(_part(_sphere(0.5), ToonMaterials.get_material(LEAF, 0.025, true), Vector3(0, 1.05, 0)))
-	root.add_child(_part(_sphere(0.32), ToonMaterials.get_material(LEAF, 0.025, true), Vector3(0.3, 0.85, 0.15)))
-	root.scale = Vector3.ONE * scale
-	return root
+static func pine(rng: RandomNumberGenerator) -> Node3D:
+	return Kit.prop(PINES[rng.randi_range(0, PINES.size() - 1)], rng.randf_range(1.5, 2.3))
 
 
-static func rock(scale: float) -> Node3D:
-	var root := Node3D.new()
-	var mesh := _sphere(0.4)
-	root.add_child(_part(mesh, ToonMaterials.get_material(STONE), Vector3(0, 0.1, 0), Vector3(1.0, 0.6, 0.8)))
-	root.scale = Vector3.ONE * scale
-	return root
+static func leafy_tree(rng: RandomNumberGenerator) -> Node3D:
+	return Kit.prop(LEAFY[rng.randi_range(0, LEAFY.size() - 1)], rng.randf_range(1.3, 1.9))
+
+
+static func rock(rng: RandomNumberGenerator) -> Node3D:
+	var model := ROCKS[rng.randi_range(0, ROCKS.size() - 1)]
+	var node := Kit.prop(model)
+	node.scale *= rng.randf_range(0.8, 1.3)
+	return node
+
+
+static func undergrowth(rng: RandomNumberGenerator) -> Node3D:
+	var model := UNDERGROWTH[rng.randi_range(0, UNDERGROWTH.size() - 1)]
+	var node := Kit.prop(model)
+	node.scale *= rng.randf_range(0.6, 0.8) if model in ["log", "stump_round"] else rng.randf_range(0.9, 1.4)
+	return node
+
+
+static func stone(rng: RandomNumberGenerator) -> Node3D:
+	var node := Kit.prop(STONES[rng.randi_range(0, STONES.size() - 1)])
+	node.scale *= rng.randf_range(0.6, 0.9)
+	return node
+
+
+## A tent with its canvas in the tribe's color. variant picks the model.
+static func tent(variant: int, canvas: Color) -> Node3D:
+	return Kit.prop(TENTS[posmod(variant, TENTS.size())], 0.78, canvas)
+
+
+static func camp_clutter(rng: RandomNumberGenerator) -> Node3D:
+	var node := Kit.prop(CAMP_CLUTTER[rng.randi_range(0, CAMP_CLUTTER.size() - 1)])
+	node.scale *= 0.8
+	return node
 
 
 ## A cotton-ball cloud made of overlapping spheres.
@@ -51,20 +67,20 @@ static func cloud(rng: RandomNumberGenerator, size: float) -> Node3D:
 	return root
 
 
-static func hut(roof_color: Color) -> Node3D:
-	var root := Node3D.new()
-	root.add_child(_part(_cylinder(0.32, 0.36, 0.4), ToonMaterials.get_material(HUT_WALL), Vector3(0, 0.2, 0)))
-	root.add_child(_part(_cylinder(0.0, 0.52, 0.55), ToonMaterials.get_material(roof_color), Vector3(0, 0.67, 0)))
-	return root
-
-
+## A ring of stones around crossed logs, with a low-poly flame (three tongues) and its light.
 static func campfire() -> Node3D:
 	var root := Node3D.new()
-	for i: int in 6:
-		var angle := TAU * i / 6.0
-		root.add_child(_part(_sphere(0.07, 8, 4), ToonMaterials.get_material(STONE, 0.012), Vector3(cos(angle) * 0.2, 0.03, sin(angle) * 0.2)))
-	var flame := _part(_cylinder(0.0, 0.13, 0.32), ToonMaterials.emissive(Color(1.0, 0.6, 0.2), Color(1.0, 0.45, 0.1) * 2.5), Vector3(0, 0.16, 0))
+	root.add_child(Kit.prop("campfire_stones", 0.0))
+	root.add_child(Kit.prop("campfire_logs", 0.0))
+	var flame := Node3D.new()
 	flame.name = "Flame"
+	flame.position.y = 0.04
+	var fire := ToonMaterials.emissive(Color(1.0, 0.62, 0.2), Color(1.0, 0.45, 0.1) * 2.5)
+	var core := ToonMaterials.emissive(Color(1.0, 0.9, 0.5), Color(1.0, 0.8, 0.3) * 2.5)
+	for tongue: Array in [[Vector3(0.0, 0.0, 0.0), 0.11, 0.34, fire], [Vector3(0.06, 0.0, 0.03), 0.07, 0.22, fire], [Vector3(-0.05, 0.0, -0.03), 0.07, 0.25, fire], [Vector3(0.0, 0.0, 0.0), 0.05, 0.18, core]]:
+		var cone := _part(_cylinder(0.0, tongue[1], tongue[2]), tongue[3], tongue[0] + Vector3(0.0, tongue[2] / 2.0, 0.0))
+		(cone.mesh as CylinderMesh).radial_segments = 5
+		flame.add_child(cone)
 	root.add_child(flame)
 	var light := OmniLight3D.new()
 	light.name = "Light"

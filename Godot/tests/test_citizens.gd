@@ -10,6 +10,7 @@ func test_new_world_has_named_citizens_and_a_chief() -> void:
 	for c: int in state.citizens_of(tribe):
 		assert_true(state.citizen_names[c].length() >= 2, "named")
 		assert_eq(Citizens.traits_of(state, c).size(), 2, "two traits")
+		assert_true(state.citizen_sexes[c] in ["f", "m"], "a woman or a man")
 		assert_true(Citizens.age(state, c) <= Citizens.age(state, chief), "the chief is the oldest")
 
 

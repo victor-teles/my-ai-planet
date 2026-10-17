@@ -53,17 +53,35 @@ Each era has a sky, ambient (shadow) color, sun color and fog color. Only Era 3 
 
 ## People
 
-People are low-poly 3D figures, toon-shaded and ink-outlined like everything else, with adult proportions (about five heads tall). The base is Kenney's *Animated Characters* model and its idle and run clips (CC0, `art/characters/kenney/`). The head bone is scaled to 70% so they read as adults, not cartoon kids. Walking blends idle with a slowed run.
+People are low-poly 3D figures, toon-shaded and ink-outlined like everything else. The base is Kenney's *Animated Characters* model with its idle and run clips (CC0, `art/characters/kenney/`). Adults have their head bone at 70% of Kenney's size, so they read as adults, not cartoon kids. Walking blends idle with a slowed run.
+
+![Villagers](screenshots/villagers.png)
+
+**Every camp is mixed.** A citizen's id fixes how they look for life (`VillagerArt.appearance`):
+
+| Trait | Range |
+|---|---|
+| Ancestry | One of five, each a set of skin tones, hair colors and eye shapes that go together (fair with any hair color; East Asian with narrow eyes; brown-skinned with black or dark hair; dark-skinned; brown-skinned with narrow eyes half the time) |
+| Sex | From the simulation. Women wear a mid-calf dress and have slightly narrower shoulders and wider hips |
+| Face | Three men's faces (with or without a beard), one woman's face; round or narrower eyes |
+| Hair | Painted short crop, plus a long fall, bun, ponytail, braid or topknot (low-poly pieces on the head bone) |
+| Build | Slim, average or stout (bone scales on hips, spine and chest), height ±6% |
+| Age | From 55, hair greys in four steps and the back stoops |
+| Children | Not citizens: one child per 15 people (up to four) runs around each camp, 62% of adult size with a larger head |
 
 | Part | Where |
 |---|---|
 | Model and clips | `art/characters/kenney/characterMedium.fbx`, `idle.fbx`, `run.fbx` |
-| Skins | `art/characters/villager_{male,female}_skin.png`, painted by `tools/paint_villager_skins.gd` |
-| Masks | `art/characters/villager_{male,female}_mask.png`: red = tunic, green = hair, blue = skin |
-| Shader | `art/shaders/villager.gdshader` (the toon light, plus per-figure colors) |
-| Chief | A leather band with three feathers on the head bone (`VillagerArt._add_headdress`) |
+| Skins and masks | `art/characters/villager_<face>[_narrow][_beard]_{skin,mask}.png`, painted by `tools/paint_villager_skins.gd` (mask: red = tunic, green = hair, blue = skin) |
+| Shader | `art/shaders/villager.gdshader` (toon light plus per-figure colors) |
+| Body shape | `game/diorama/villager_pose.gd`, a skeleton modifier applied after the animation |
+| Chief | A leather band with three feathers on the head bone |
 
-**Outfit (Era 3):** a knee-length tunic in the tribe's color with a collar and leather belt `#6b4530`, bare forearms, linen leggings `#ccb894` with leather wraps, leather shoes. Each citizen keeps one of five hair colors and five skin tones for life. Don't add modern clothing details; new eras get new skins painted the same way.
+**Outfit (Era 3):** a tunic in the tribe's color with a collar and leather belt `#6b4530`, bare forearms, linen leggings `#ccb894` with leather wraps, leather shoes. No modern clothing details; new eras get new skins painted the same way.
+
+## Props
+
+Trees, bushes, flowers, mushrooms, rocks, logs, tents, campfires and camp belongings come from Kenney's *Nature Kit* and *Survival Kit* (CC0, `art/props/kenney/`), loaded by `game/diorama/kit.gd`. Every kit material is replaced with a toon material in this bible's palette, looked up by the kit's material name (`Kit.PALETTE`), and every model gets an ink outline hull with smoothed normals (the kit is flat-shaded, which would crack an ordinary hull). Tent canvas is linen tinted 45% toward the tribe's color. To add a prop, copy the `.glb` into `art/props/kenney/` and map any new material names in `Kit.PALETTE`.
 
 ## Painted textures
 
@@ -71,4 +89,4 @@ People are low-poly 3D figures, toon-shaded and ink-outlined like everything els
 
 ## Placeholders left
 
-Trees, huts, rocks and the campfire are still primitive shapes with the final shading and brush strokes. Painted assets replace them one at a time, and each replacement must keep the silhouette size and the color in the tables above.
+The campfire flame (a few glowing cones) and the clouds are still built in code.
