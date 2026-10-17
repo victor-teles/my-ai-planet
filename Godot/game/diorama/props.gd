@@ -1,14 +1,13 @@
 class_name Props
 extends RefCounted
-## Builds small toon props from primitive meshes. Placeholder geometry with the final shading,
-## so the look can be judged now and painted assets can replace these one by one.
+## Builds small toon props from primitive meshes, shaded with the painterly toon material
+## (stepped light, ink outline, brush strokes). People are drawn billboards: see VillagerArt.
 
 const PINE := Color(0.20, 0.48, 0.44)
 const LEAF := Color(0.50, 0.72, 0.34)
 const BARK := Color(0.45, 0.30, 0.24)
 const THATCH := Color(0.86, 0.62, 0.36)
 const HUT_WALL := Color(0.70, 0.50, 0.40)
-const SKIN := Color(0.96, 0.78, 0.62)
 const STONE := Color(0.62, 0.56, 0.62)
 
 
@@ -59,17 +58,6 @@ static func hut(roof_color: Color) -> Node3D:
 	return root
 
 
-static func person(tunic: Color) -> Node3D:
-	var root := Node3D.new()
-	var body := _part(_capsule(0.09, 0.3), ToonMaterials.get_material(tunic, 0.015), Vector3(0, 0.15, 0))
-	body.name = "Body"
-	root.add_child(body)
-	var head := _part(_sphere(0.085, 16, 8), ToonMaterials.get_material(SKIN, 0.015), Vector3(0, 0.38, 0))
-	head.name = "Head"
-	root.add_child(head)
-	return root
-
-
 static func campfire() -> Node3D:
 	var root := Node3D.new()
 	for i: int in 6:
@@ -113,13 +101,4 @@ static func _sphere(radius: float, segments: int = 16, rings: int = 8) -> Sphere
 	mesh.height = radius * 2.0
 	mesh.radial_segments = segments
 	mesh.rings = rings
-	return mesh
-
-
-static func _capsule(radius: float, height: float) -> CapsuleMesh:
-	var mesh := CapsuleMesh.new()
-	mesh.radius = radius
-	mesh.height = height
-	mesh.radial_segments = 10
-	mesh.rings = 2
 	return mesh

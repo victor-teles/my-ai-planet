@@ -4,12 +4,14 @@ A hand-drawn 2.5D life simulation. You nurture a tiny planet from its first cell
 
 ## Run
 
-Open `Godot/` in Godot 4.7, then press Play. The current build is the first playable loop: the Oracle makes a prophecy, you nudge the world with miracles, and a chronicle tells you how it turned out.
+Open `Godot/` in Godot 4.7, then press Play. The current build is the first playable loop: the Oracle makes a prophecy, you nudge the world with miracles, and a chronicle tells you how it turned out. Underneath, tribes drink from the pond and two springs, need food, water, room and safety, and grow to love or hate each other: rivals go to war, and small tribes join their friends. Every figure is a named citizen; each tribe's oldest is its chief, and the chief's traits steer the tribe.
 
 | Key | Action |
 |---|---|
 | Space | Pause |
-| Click a camp | Choose a tribe for Harvest or Plague |
+| Click a person | Inspect them: traits, the tribe's needs, neighbors, what they're thinking |
+| Click a camp | Choose a tribe for Harvest or Plague (and inspect its chief) |
+| Esc | Close the inspector |
 | Enter | Continue after a reveal |
 | 1 / 2 / 3 | Speed, or pick a choice while a dilemma card is up |
 | S / L | Save / load |
@@ -40,10 +42,12 @@ Balance report (12 seeds, 300 years, offline AI, a bot that plays kindly):
 godot --headless --path Godot -s res://tools/balance_report.gd -- years=300 seeds=12
 ```
 
+The brush-stroke texture is painted by a script: `godot --headless --path Godot -s res://tools/paint_textures.gd`.
+
 `scripts/test.sh` uses `godot` from your PATH, or `GODOT_PATH`, or `/Applications/Godot.app`.
 
 ## Screenshots
 
 `scripts/screenshot.sh out.png [frames] -- --seed=42 --warmup-years=110 --distance=15 --pitch=-0.6 --yaw=3.8 --fast-forward-years=200` renders a frame (it opens a window briefly).
 
-![Village](docs/screenshots/m1-village.png)
+![Village](docs/screenshots/m2-village.png)

@@ -51,12 +51,14 @@ func _update_tribe(state: WorldState, i: int, valley_population: int) -> void:
 	var population := state.tribe_population[i]
 	var water := Needs.water(state, i)
 	var food := state.tribe_food[i]
-	food += population * FOOD_GATHERED_PER_PERSON * state.rainfall * crowding(state, i, valley_population) * lerpf(THIRSTY_GATHERING, 1.0, water)
+	var gathering := FOOD_GATHERED_PER_PERSON * Citizens.chief_effect(state, state.tribe_names[i], "gather")
+	food += population * gathering * state.rainfall * crowding(state, i, valley_population) * lerpf(THIRSTY_GATHERING, 1.0, water)
 	food -= population * FOOD_EATEN_PER_PERSON
 
 	var fed := food >= 0.0
 	if not fed:
-		var starved := mini(state.rng.round_stochastic(-food / FOOD_EATEN_PER_PERSON * STARVATION_RATE), population)
+		var starvation := STARVATION_RATE * Citizens.chief_effect(state, state.tribe_names[i], "starve")
+		var starved := mini(state.rng.round_stochastic(-food / FOOD_EATEN_PER_PERSON * starvation), population)
 		population -= starved
 		food = 0.0
 		if starved >= 3 and not _recent_famine(state, state.tribe_names[i]):
@@ -76,6 +78,7 @@ func _update_tribe(state: WorldState, i: int, valley_population: int) -> void:
 	state.tribe_population[i] = population
 	state.tribe_food[i] = food
 
-	if state.month() == 0 and population >= SPLIT_AT_POPULATION and state.rng.chance(SPLIT_CHANCE_PER_YEAR):
+	var split_chance := SPLIT_CHANCE_PER_YEAR * Citizens.chief_effect(state, state.tribe_names[i], "split")
+	if state.month() == 0 and population >= SPLIT_AT_POPULATION and state.rng.chance(split_chance):
 		@warning_ignore("integer_division")
 		state.split_tribe(i, population / 2)

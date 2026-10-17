@@ -1,6 +1,7 @@
 extends Node
 ## Runs the era loop (Session), shows the world as a diorama, and hosts the prototype UI.
-## Space: pause.  1/2/3: speed (or choose, while a dilemma card is up).  Click a camp: select a tribe.
+## Space: pause.  1/2/3: speed (or choose, while a dilemma card is up).
+## Click a person: inspect them.  Click a camp: select the tribe and inspect its chief.  Esc: close.
 ## Enter: continue after a reveal.
 ## S/L: save/load.  F1: debug panel.
 ## Command-line options (after --): --seed=N  --warmup-years=N  --fast-forward-years=N  --hide-ui
@@ -46,6 +47,19 @@ var _card_scroll: ScrollContainer
 var _reveal_scroll: ScrollContainer
 var _reveal_shown: Dictionary = {}
 var _theme := Theme.new()
+var _inspector := PanelContainer.new()
+var _inspected_id := -1
+var _inspected_name := ""
+var _inspector_name := Label.new()
+var _inspector_role := Label.new()
+var _inspector_traits := HBoxContainer.new()
+var _inspector_body := VBoxContainer.new()
+var _need_bars: Dictionary = {} ## need -> ProgressBar
+var _inspector_mood := Label.new()
+var _inspector_neighbors := Label.new()
+var _inspector_thought := Label.new()
+var _thoughts: Dictionary = {} ## "citizen id|5-year span" -> what they think
+var _thought_key := ""
 
 
 func _ready() -> void:
@@ -100,7 +114,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if button.pressed:
 			_press_position = button.position
 		elif button.position.distance_to(_press_position) < CLICK_SLOP:
-			diorama.select_tribe(diorama.pick_tribe(button.position))
+			_on_world_click(button.position)
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
@@ -114,12 +128,76 @@ func _unhandled_input(event: InputEvent) -> void:
 				speed_index = key.keycode - KEY_1
 		KEY_ENTER, KEY_KP_ENTER:
 			session.continue_after_reveal()
+		KEY_ESCAPE:
+			_inspect(-1)
 		KEY_S:
 			session.sim.save_to(SAVE_PATH)
 		KEY_L:
 			_load()
 		KEY_F1:
 			_debug_label.visible = not _debug_label.visible
+
+
+## A person under the cursor is inspected; otherwise a camp is selected and its chief inspected.
+func _on_world_click(screen_position: Vector2) -> void:
+	var citizen := diorama.pick_citizen(screen_position)
+	if citizen != -1:
+		_inspect(citizen)
+		return
+	var tribe := diorama.pick_tribe(screen_position)
+	diorama.select_tribe(tribe)
+	var chief := Citizens.chief(session.sim.state, tribe) if tribe else -1
+	_inspect(session.sim.state.citizen_ids[chief] if chief != -1 else -1)
+
+
+func _inspect(id: int) -> void:
+	var state := session.sim.state
+	var c := Citizens.index_of(state, id)
+	_inspected_id = id if c != -1 else -1
+	diorama.focus_citizen(_inspected_id)
+	if c == -1:
+		return
+	_inspected_name = state.citizen_names[c]
+	diorama.select_tribe(state.citizen_tribes[c])
+	for child: Node in _inspector_traits.get_children():
+		child.queue_free()
+	for trait_id: String in Citizens.traits_of(state, c):
+		var chip := Label.new()
+		chip.text = trait_id.capitalize()
+		chip.tooltip_text = "As chief: " + String(Citizens.TRAITS[trait_id]["description"])
+		chip.mouse_filter = Control.MOUSE_FILTER_PASS
+		chip.add_theme_stylebox_override("normal", _chip_box())
+		_inked(chip, 14)
+		_inspector_traits.add_child(chip)
+	_refresh_thought(c)
+
+
+## Shows a thought right away from the offline templates; a real AI's version replaces it when it
+## arrives. Thoughts are kept for five years so clicking around doesn't keep asking the AI.
+func _refresh_thought(c: int) -> void:
+	var state := session.sim.state
+	var id := state.citizen_ids[c]
+	var key := _thought_key_for(c)
+	_thought_key = key
+	if _thoughts.has(key):
+		_inspector_thought.text = "\"%s\"" % _thoughts[key]
+		return
+	var oracle := session.oracle
+	_thoughts[key] = oracle.offline_thought(state, c)
+	_inspector_thought.text = "\"%s\"" % _thoughts[key]
+	if oracle.provider == oracle.fallback or oracle.provider is OfflineTemplatesProvider:
+		return
+	var thought := await oracle.request_thought(state, c)
+	if thought:
+		_thoughts[key] = thought
+		if _inspected_id == id:
+			_inspector_thought.text = "\"%s\"" % thought
+
+
+func _thought_key_for(c: int) -> String:
+	var state := session.sim.state
+	@warning_ignore("integer_division")
+	return "%d|%d" % [state.citizen_ids[c], state.year() / 5]
 
 
 func _load() -> void:
@@ -177,6 +255,7 @@ func _build_ui() -> void:
 	_ui.add_child(_debug_label)
 
 	_ui.add_child(_build_miracle_bar())
+	_ui.add_child(_build_inspector())
 	_ui.add_child(_build_reveal())
 	_ui.add_child(_build_card())
 
@@ -208,6 +287,138 @@ func _build_miracle_bar() -> Control:
 	_target.custom_minimum_size.x = 170
 	row.add_child(_target)
 	return bar
+
+
+func _build_inspector() -> Control:
+	_inspector.theme = _theme
+	_inspector.add_theme_stylebox_override("panel", _parchment_box(14, 16))
+	_inspector.custom_minimum_size.x = 300
+	_inspector.visible = false
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 8)
+	_inspector.add_child(column)
+	var header := HBoxContainer.new()
+	_inked(_inspector_name, 24)
+	_inspector_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(_inspector_name)
+	var close := _ink_button("×")
+	close.tooltip_text = "Close (Esc)"
+	close.pressed.connect(_inspect.bind(-1))
+	header.add_child(close)
+	column.add_child(header)
+	_inked(_inspector_role, 14)
+	column.add_child(_inspector_role)
+	_inspector_body.add_theme_constant_override("separation", 8)
+	column.add_child(_inspector_body)
+	_inspector_traits.add_theme_constant_override("separation", 6)
+	_inspector_body.add_child(_inspector_traits)
+	_inspector_body.add_child(_section("THE TRIBE'S NEEDS"))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	for need: String in Needs.NAMES:
+		var label := Label.new()
+		label.text = need.capitalize()
+		_inked(label, 14)
+		grid.add_child(label)
+		var bar := ProgressBar.new()
+		bar.max_value = 1.0
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(190, 12)
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		bar.add_theme_stylebox_override("background", _bar_box(PARCHMENT.darkened(0.12)))
+		grid.add_child(bar)
+		_need_bars[need] = bar
+	_inspector_body.add_child(grid)
+	_inked(_inspector_mood, 14)
+	_inspector_mood.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_inspector_body.add_child(_inspector_mood)
+	_inspector_body.add_child(_section("NEIGHBORS"))
+	_inked(_inspector_neighbors, 14)
+	_inspector_body.add_child(_inspector_neighbors)
+	_inked(_inspector_thought, 16)
+	_inspector_thought.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_inspector_thought.custom_minimum_size.x = 268
+	_inspector_thought.add_theme_color_override("font_color", ToonMaterials.INK.lightened(0.15))
+	column.add_child(_inspector_thought)
+	return _inspector
+
+
+func _update_inspector() -> void:
+	var state := session.sim.state
+	_inspector.visible = _inspected_id != -1 and session.phase not in [Session.Phase.REVEAL, Session.Phase.DECIDING]
+	if not _inspector.visible:
+		return
+	var c := Citizens.index_of(state, _inspected_id)
+	_inspector_body.visible = c != -1
+	_inspector_role.visible = c != -1
+	if c == -1:
+		_inspector_name.text = _inspected_name
+		_inspector_thought.text = "%s has passed on. Their tribe remembers them." % _inspected_name
+	else:
+		var tribe := state.citizen_tribes[c]
+		var t := state.tribe_index(tribe)
+		_inspector_name.text = state.citizen_names[c]
+		var role := "Chief of the %s" % tribe if Citizens.chief(state, tribe) == c else "Of the %s" % tribe
+		_inspector_role.text = "%s   ·   %d years old" % [role, Citizens.age(state, c)]
+		for need: String in Needs.NAMES:
+			var value := Needs.get_need(state, t, need)
+			var bar := _need_bars[need] as ProgressBar
+			bar.value = value
+			bar.add_theme_stylebox_override("fill", _bar_box(_need_color(value)))
+		var water := state.tribe_water[t]
+		_inspector_mood.text = "The %s are %s. They drink from %s (%d%% full)." % [
+			tribe, Needs.mood_word(Needs.mood(state, t)), state.water_names[water], roundi(state.water_level[water] * 100.0),
+		]
+		var lines := PackedStringArray()
+		for other: String in state.tribe_names:
+			var value := state.relation(tribe, other)
+			if other != tribe and absi(value) >= 10:
+				lines.append("%s   %s (%+d)" % [other, WorldState.relation_word(value), value])
+		_inspector_neighbors.text = "\n".join(lines) if not lines.is_empty() else "No strong feelings for anyone."
+		if _thought_key_for(c) != _thought_key:
+			_refresh_thought(c)
+	_inspector.reset_size()
+	var view := get_viewport().get_visible_rect().size
+	_inspector.position = Vector2(view.x - _inspector.size.x - 16.0, TOP_ROOM + 8.0)
+
+
+func _section(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	_inked(label, 12)
+	label.add_theme_color_override("font_color", ToonMaterials.INK.lightened(0.35))
+	return label
+
+
+func _need_color(value: float) -> Color:
+	if value < 0.3:
+		return Color(0.85, 0.36, 0.30)
+	if value < 0.6:
+		return Color(0.93, 0.68, 0.30)
+	return Color(0.45, 0.70, 0.40)
+
+
+func _bar_box(color: Color) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = color
+	box.border_color = ToonMaterials.INK
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(5)
+	return box
+
+
+func _chip_box() -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0.95, 0.86, 0.68)
+	box.border_color = ToonMaterials.INK
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(9)
+	box.content_margin_left = 9
+	box.content_margin_right = 9
+	box.content_margin_top = 2
+	box.content_margin_bottom = 2
+	return box
 
 
 func _build_reveal() -> Control:
@@ -336,7 +547,7 @@ func _update_ui() -> void:
 	]
 	_influence.text = "✦ Influence %.1f" % state.influence
 	var tribe := diorama.selected_tribe()
-	_target.text = "Tribe: %s" % tribe if tribe else "Click a camp to choose a tribe"
+	_target.text = "Tribe: %s" % tribe if tribe else "Click a camp or a person"
 	for id: String in _miracle_buttons:
 		var button := _miracle_buttons[id] as Button
 		var reason := Miracles.why_not(state, id, tribe)
@@ -363,6 +574,7 @@ func _update_ui() -> void:
 			_reveal_causes.text = "\n".join(causes)
 			_fit(_reveal, _reveal_scroll)
 		_center(_reveal)
+	_update_inspector()
 	if _debug_label.visible:
 		_debug_label.text = _debug_text()
 

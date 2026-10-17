@@ -5,6 +5,7 @@ extends RefCounted
 const TOON_SHADER := preload("res://art/shaders/toon.gdshader")
 const OUTLINE_SHADER := preload("res://art/shaders/outline.gdshader")
 const CLOUD_SHADER := preload("res://art/shaders/cloud.gdshader")
+const BRUSH_STROKES := preload("res://art/textures/brush_strokes.png")
 const INK := Color(0.16, 0.10, 0.20)
 
 static var _cache: Dictionary = {}
@@ -18,6 +19,7 @@ static func get_material(tint: Color, outline_width: float = 0.03, vegetation: b
 	var material := ShaderMaterial.new()
 	material.shader = TOON_SHADER
 	material.set_shader_parameter("tint", tint)
+	material.set_shader_parameter("brush_strokes", BRUSH_STROKES)
 	if outline_width > 0.0:
 		var outline := ShaderMaterial.new()
 		outline.shader = OUTLINE_SHADER

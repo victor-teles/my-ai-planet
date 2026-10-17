@@ -14,3 +14,12 @@ static func tribe_name(rng: SimRng) -> String:
 		name += ONSETS[rng.pick_index(ONSETS.size())] + VOWELS[rng.pick_index(VOWELS.size())]
 	name += CODAS[rng.pick_index(CODAS.size())]
 	return name.capitalize()
+
+
+## Shorter, softer names for people: "Teshu", "Mirra", "Kael".
+static func person_name(rng: SimRng) -> String:
+	var name := ONSETS[rng.pick_index(ONSETS.size())] + VOWELS[rng.pick_index(VOWELS.size())]
+	if rng.chance(0.6):
+		name += ONSETS[rng.pick_index(ONSETS.size())] + VOWELS[rng.pick_index(4)]
+	name += CODAS[rng.pick_index(CODAS.size())]
+	return name.capitalize()

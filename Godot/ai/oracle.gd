@@ -6,6 +6,7 @@ extends RefCounted
 const PROPHECY_PROMPT := "prophecy.v1"
 const CHRONICLE_PROMPT := "chronicle.v1"
 const DILEMMA_PROMPT := "dilemma.v1"
+const THOUGHT_PROMPT := "thought.v1"
 const MAX_CHRONICLE_EVENTS := 40
 
 var provider: AIProvider
@@ -33,6 +34,28 @@ func request_dilemma(state: WorldState) -> Dilemma:
 	request.tier = AIRequest.Tier.MEDIUM
 	var accept := func(reply: Dictionary) -> Variant: return Dilemma.from_proposal(reply, state)
 	return await _ask(request, accept)
+
+
+## What a citizen (by index) is thinking, in their own words.
+func request_thought(state: WorldState, c: int) -> String:
+	var request := _thought_request(state, c)
+	var accept := func(reply: Dictionary) -> Variant:
+		var thought := String(reply["thought"]).strip_edges()
+		return thought if thought else null
+	var thought: Variant = await _ask(request, accept)
+	return thought if thought is String else ""
+
+
+## The offline thought, right away, to show while a real AI writes a better one.
+func offline_thought(state: WorldState, c: int) -> String:
+	return String(OfflineTemplatesProvider.new().thought(_thought_request(state, c)))
+
+
+func _thought_request(state: WorldState, c: int) -> AIRequest:
+	var request := _request("thought", THOUGHT_PROMPT, Citizens.describe(state, c), "citizen", state)
+	request.tier = AIRequest.Tier.SMALL
+	request.seed_value = hash([state.seed_value, state.citizen_ids[c], state.year()])
+	return request
 
 
 ## Returns {"title", "text", "causes"} telling how the prophecy came true or broke.

@@ -9,6 +9,8 @@ const POND_RADIUS := 2.3
 const WATER_LEVEL := 0.42
 const CAMP_SLOTS := 12
 const SPRING_SPOTS := 4
+const SPRING_RADIUS := 0.95
+const SPRING_DEPTH := 0.42
 
 var _bumps := FastNoiseLite.new()
 var _outline := FastNoiseLite.new()
@@ -31,7 +33,17 @@ func edge_radius(angle: float) -> float:
 	return RADIUS * (0.86 + 0.22 * _outline.get_noise_2d(cos(angle) * 2.0, sin(angle) * 2.0))
 
 
+## Terrain height, including the dips the springs sit in.
 func height_at(x: float, z: float) -> float:
+	var height := _base_height(x, z)
+	for spot: Vector3 in _spring_spots:
+		var d := Vector2(spot.x, spot.z).distance_to(Vector2(x, z)) / SPRING_RADIUS
+		if d < 1.0:
+			height -= SPRING_DEPTH * (1.0 - smoothstep(0.0, 1.0, d))
+	return height
+
+
+func _base_height(x: float, z: float) -> float:
 	var r := Vector2(x, z).length() / RADIUS
 	var dome := 1.0 * (1.0 - r * r)
 	var bumps := 0.5 * _bumps.get_noise_2d(x, z)
@@ -64,7 +76,8 @@ func is_near_camp(x: float, z: float, distance: float) -> bool:
 	return false
 
 
-## Where the springs bubble up, away from the camps and the pond.
+## Where the springs bubble up, away from the camps and the pond. The point is on the rim
+## of the spring's dip, which is where its water surface sits when full.
 func spring_spot(index: int) -> Vector3:
 	return _spring_spots[index % _spring_spots.size()]
 
@@ -87,9 +100,9 @@ func _find_spring_spots() -> Array[Vector3]:
 				crowded = true
 				break
 		if not crowded:
-			spots.append(surface_point(x, z))
+			spots.append(Vector3(x, _base_height(x, z), z))
 	if spots.is_empty():
-		spots.append(surface_point(POND_CENTER.x, POND_CENTER.y))
+		spots.append(Vector3(POND_CENTER.x, _base_height(POND_CENTER.x, POND_CENTER.y), POND_CENTER.y))
 	return spots
 
 

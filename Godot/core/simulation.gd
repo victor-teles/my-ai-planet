@@ -21,6 +21,7 @@ static func default_scheduler() -> TickScheduler:
 	scheduler.add_system(WaterSystem.new())
 	scheduler.add_system(PopulationSystem.new())
 	scheduler.add_system(RelationsSystem.new())
+	scheduler.add_system(CitizenSystem.new())
 	scheduler.add_system(InfluenceSystem.new())
 	scheduler.add_system(ProphecySystem.new())
 	return scheduler

@@ -21,6 +21,9 @@ var _clouds := Node3D.new()
 var _sun := DirectionalLight3D.new()
 var _rain := CPUParticles3D.new()
 var _selected := ""
+var _focused_citizen := -1
+var _popup_frame := -1 ## the frame the last pop-up appeared in
+var _popups_this_frame: Dictionary = {} ## where -> how many pop-ups started there this frame
 var _pond: MeshInstance3D
 var _springs: Array[Node3D] = [] ## water source index - 1 -> spring pool
 
@@ -49,6 +52,29 @@ func pick_tribe(screen_position: Vector2, max_distance: float = 90.0) -> String:
 	return best
 
 
+## The citizen whose figure is drawn under a screen position, or -1 if none is near.
+func pick_citizen(screen_position: Vector2, max_distance: float = 22.0) -> int:
+	var best := -1
+	var best_distance := max_distance
+	var camera := camera_rig.camera
+	for tribe: String in _camps:
+		var camp := _camps[tribe] as TribeCamp
+		for id: int in camp.citizen_ids():
+			var middle := camp.figure(id).global_position + Vector3(0.0, VillagerArt.SIZE.y * 0.5, 0.0)
+			if camera.is_position_behind(middle):
+				continue
+			var distance := camera.unproject_position(middle).distance_to(screen_position)
+			if distance < best_distance:
+				best = id
+				best_distance = distance
+	return best
+
+
+## Rings the citizen being inspected; -1 clears it.
+func focus_citizen(id: int) -> void:
+	_focused_citizen = id
+
+
 func select_tribe(tribe: String) -> void:
 	if _camps.has(_selected):
 		(_camps[_selected] as TribeCamp).set_selected(false)
@@ -62,11 +88,22 @@ func selected_tribe() -> String:
 
 
 func sync(state: WorldState, delta: float) -> void:
+	var members := {} ## tribe name -> citizen ids
+	for c: int in state.citizen_ids.size():
+		if not members.has(state.citizen_tribes[c]):
+			members[state.citizen_tribes[c]] = PackedInt32Array()
+		var ids: PackedInt32Array = members[state.citizen_tribes[c]]
+		ids.append(state.citizen_ids[c])
+		members[state.citizen_tribes[c]] = ids
 	for i: int in state.tribe_count():
 		var tribe := state.tribe_names[i]
 		if not _camps.has(tribe):
 			_add_camp(tribe)
-		(_camps[tribe] as TribeCamp).set_population(state.tribe_population[i])
+		var camp := _camps[tribe] as TribeCamp
+		camp.set_population(state.tribe_population[i])
+		var chief := Citizens.chief(state, tribe)
+		camp.set_citizens(members.get(tribe, PackedInt32Array()), state.citizen_ids[chief] if chief != -1 else -1)
+		camp.set_focus(_focused_citizen) # also follows a citizen into a new tribe after a split or merge
 	for tribe: String in _camps.keys():
 		if tribe not in state.tribe_names:
 			(_camps[tribe] as TribeCamp).vanish()
@@ -97,6 +134,7 @@ func _sync_water(state: WorldState, delta: float) -> void:
 		var pool := _springs[w - 1].get_node("Pool") as Node3D
 		var size := lerpf(0.15, 1.0, sqrt(state.water_level[w]))
 		pool.scale = pool.scale.move_toward(Vector3(size, 1.0, size), delta * 0.3)
+		pool.position.y = move_toward(pool.position.y, -0.1 - (1.0 - state.water_level[w]) * 0.22, delta * 0.2)
 
 
 ## Skip the pop-ups for events that happened before the view existed (e.g. after loading).
@@ -190,14 +228,16 @@ func _water_disc(radius: float) -> MeshInstance3D:
 func _build_spring(spot: Vector3) -> Node3D:
 	var spring := Node3D.new()
 	spring.position = spot
-	var pool := _water_disc(0.62)
+	var pool := _water_disc(IslandShape.SPRING_RADIUS * 0.8)
 	pool.name = "Pool"
-	pool.position.y = 0.06
+	pool.position.y = -0.1
 	spring.add_child(pool)
 	for i: int in 9:
 		var angle := TAU * i / 9.0
 		var stone := Props.rock(0.32)
-		stone.position = Vector3(cos(angle) * 0.75, 0.0, sin(angle) * 0.75)
+		var x := cos(angle) * IslandShape.SPRING_RADIUS
+		var z := sin(angle) * IslandShape.SPRING_RADIUS
+		stone.position = Vector3(x, shape.height_at(spot.x + x, spot.z + z) - spot.y, z)
 		stone.rotation.y = angle * 2.0
 		spring.add_child(stone)
 	add_child(spring)
@@ -277,6 +317,9 @@ func _show_event(event: Dictionary) -> void:
 		"tribes_merged":
 			text = "The %s join the %s" % [data["from"], data["into"]]
 			where = _camp_position(String(data["into"]))
+		"new_chief": # follows the old chief's death, so one pop-up tells both
+			text = "%s now leads the %s" % [data["name"], data["tribe"]]
+			where = _camp_position(String(data["tribe"]))
 		"tribe_moved":
 			text = "The %s go to drink from %s" % [data["tribe"], data["water"]]
 			where = _camp_position(String(data["tribe"]))
@@ -304,7 +347,13 @@ func _show_event(event: Dictionary) -> void:
 	label.outline_modulate = ToonMaterials.INK
 	label.pixel_size = 0.006
 	label.no_depth_test = true
-	label.position = where + Vector3(0, 2.2, 0)
+	# Events that land together (a chief dies, another takes over) stack instead of overlapping.
+	if Engine.get_process_frames() != _popup_frame:
+		_popup_frame = Engine.get_process_frames()
+		_popups_this_frame.clear()
+	var stacked := int(_popups_this_frame.get(where, 0))
+	_popups_this_frame[where] = stacked + 1
+	label.position = where + Vector3(0, 2.2 + stacked * 0.45, 0)
 	add_child(label)
 	var tween := create_tween().set_parallel()
 	tween.tween_property(label, "position:y", label.position.y + 1.2, POPUP_SECONDS)

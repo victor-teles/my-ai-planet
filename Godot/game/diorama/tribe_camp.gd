@@ -1,10 +1,8 @@
 class_name TribeCamp
 extends Node3D
-## One tribe on the island: a campfire, huts that grow with the population, and people
-## wandering around the fire. Visual only: randomness here never touches the simulation.
+## One tribe on the island: a campfire, huts that grow with the population, and its citizens
+## wandering around the fire, one figure each. Visual only: randomness here never touches the simulation.
 
-const PEOPLE_PER_FIGURE := 6
-const MAX_FIGURES := 14
 const PEOPLE_PER_HUT := 14
 const MAX_HUTS := 6
 const WANDER_RADIUS := 1.6
@@ -17,10 +15,12 @@ var roof: Color
 var _rng := RandomNumberGenerator.new()
 var _fire: Node3D
 var _huts: Array[Node3D] = []
-var _people: Array[Node3D] = []
-var _targets: Array[Vector3] = []
-var _phases := PackedFloat32Array()
+var _people: Dictionary = {} ## citizen id -> figure
+var _targets: Dictionary = {} ## citizen id -> where the figure is walking
+var _phases: Dictionary = {} ## citizen id -> offset of its hop
+var _chief_id := -1
 var _selection_ring: MeshInstance3D
+var _focus_ring: MeshInstance3D
 
 
 func setup(name_of_tribe: String, island: IslandShape) -> void:
@@ -41,30 +41,54 @@ func set_population(population: int) -> void:
 		_add_hut()
 	while _huts.size() > hut_count:
 		_huts.pop_back().queue_free()
-	var figure_count := clampi(ceili(float(population) / PEOPLE_PER_FIGURE), 1, MAX_FIGURES)
-	while _people.size() < figure_count:
-		_add_person()
-	while _people.size() > figure_count:
-		_people.pop_back().queue_free()
-		_targets.pop_back()
-		_phases.remove_at(_phases.size() - 1)
 
 
-func set_selected(selected: bool) -> void:
-	if selected and _selection_ring == null:
+## Keeps one figure per citizen: newcomers pop in, the departed shrink away, and the chief
+## wears the feathered headband.
+func set_citizens(ids: PackedInt32Array, chief_id: int) -> void:
+	for id: int in _people.keys():
+		if id not in ids:
+			_remove_person(id)
+	for id: int in ids:
+		if not _people.has(id):
+			_add_person(id, id == chief_id)
+	if chief_id != _chief_id:
+		for id: int in [_chief_id, chief_id]:
+			if _people.has(id):
+				var sprite := _people[id].get_node("Sprite") as MeshInstance3D
+				sprite.material_override = VillagerArt.material(_hair_style(id), id == chief_id)
+		_chief_id = chief_id
+
+
+## The figure of a citizen, or null if this camp doesn't have them.
+func figure(id: int) -> Node3D:
+	return _people.get(id)
+
+
+func citizen_ids() -> Array:
+	return _people.keys()
+
+
+## Puts a ring under the citizen being inspected, if they are in this camp. Cheap to call every frame.
+func set_focus(id: int) -> void:
+	var target: Node3D = _people.get(id)
+	var holder: Node = _focus_ring.get_parent() if _focus_ring else null
+	if holder == target:
+		return
+	if holder:
+		holder.remove_child(_focus_ring)
+	if target == null:
+		return
+	if _focus_ring == null:
 		var torus := TorusMesh.new()
-		torus.inner_radius = 2.0
-		torus.outer_radius = 2.15
-		torus.rings = 48
-		_selection_ring = MeshInstance3D.new()
-		_selection_ring.mesh = torus
-		_selection_ring.material_override = ToonMaterials.emissive(Color(1.0, 0.92, 0.6), Color(1.0, 0.8, 0.4))
-		_selection_ring.position.y = 0.15
-		add_child(_selection_ring)
-		_pop_in(_selection_ring)
-	elif not selected and _selection_ring != null:
-		_selection_ring.queue_free()
-		_selection_ring = null
+		torus.inner_radius = 0.2
+		torus.outer_radius = 0.26
+		torus.rings = 24
+		_focus_ring = MeshInstance3D.new()
+		_focus_ring.mesh = torus
+		_focus_ring.material_override = ToonMaterials.emissive(Color(1.0, 0.95, 0.7), Color(1.0, 0.85, 0.45))
+		_focus_ring.position.y = 0.04
+	target.add_child(_focus_ring)
 
 
 func _process(delta: float) -> void:
@@ -72,30 +96,35 @@ func _process(delta: float) -> void:
 	if _selection_ring:
 		_selection_ring.scale = Vector3.ONE * (1.0 + 0.03 * sin(time * 4.0))
 	var flame := _fire.get_node("Flame") as Node3D
-	var flicker := 0.85 + 0.15 * sin(time * 13.0 + _phases.size()) + 0.08 * sin(time * 23.0)
+	var flicker := 0.85 + 0.15 * sin(time * 13.0 + _people.size()) + 0.08 * sin(time * 23.0)
 	flame.scale = Vector3(1.0, flicker, 1.0)
 	(_fire.get_node("Light") as OmniLight3D).light_energy = 1.4 * flicker
-	for i: int in _people.size():
-		_walk(i, delta, time)
+	var camera := get_viewport().get_camera_3d()
+	var screen_right := camera.global_basis.x if camera else Vector3.RIGHT
+	for id: int in _people:
+		_walk(id, delta, time, screen_right)
+	if _focus_ring and _focus_ring.get_parent():
+		_focus_ring.scale = Vector3.ONE * (1.0 + 0.08 * sin(time * 5.0))
 
 
-func _walk(i: int, delta: float, time: float) -> void:
-	var person := _people[i]
-	var to_target := _targets[i] - person.position
+func _walk(id: int, delta: float, time: float, screen_right: Vector3) -> void:
+	var person := _people[id] as Node3D
+	var to_target: Vector3 = _targets[id] - person.position
 	to_target.y = 0.0
 	if to_target.length() < 0.1:
-		_targets[i] = _random_spot()
+		_targets[id] = _random_spot()
 		return
 	var step := to_target.normalized() * minf(0.6 * delta, to_target.length())
 	person.position += step
 	person.position.y = _ground(person.position)
-	person.rotation.y = atan2(to_target.x, to_target.z)
-	# Little hops with squash and stretch.
-	var hop := absf(sin(time * 9.0 + _phases[i]))
-	var body := person.get_node("Body") as Node3D
-	body.position.y = 0.15 + hop * 0.06
-	(person.get_node("Head") as Node3D).position.y = 0.38 + hop * 0.07
-	body.scale = Vector3(1.0 + (1.0 - hop) * 0.12, 1.0 - (1.0 - hop) * 0.1, 1.0 + (1.0 - hop) * 0.12)
+	# Little hops with squash and stretch, two drawn frames, facing the way they walk.
+	var phase: float = _phases[id]
+	var hop := absf(sin(time * 9.0 + phase))
+	var sprite := person.get_node("Sprite") as MeshInstance3D
+	sprite.position.y = hop * 0.06
+	sprite.scale = Vector3(1.0 + (1.0 - hop) * 0.1, 1.0 - (1.0 - hop) * 0.08, 1.0)
+	sprite.set_instance_shader_parameter("frame", float(int((time * 9.0 + phase) / PI) % 2))
+	sprite.set_instance_shader_parameter("flip", 1.0 if step.dot(screen_right) < 0.0 else 0.0)
 
 
 func _add_hut() -> void:
@@ -110,14 +139,36 @@ func _add_hut() -> void:
 	_pop_in(hut)
 
 
-func _add_person() -> void:
-	var person := Props.person(tunic)
+func _add_person(id: int, chief: bool) -> void:
+	var person := Node3D.new()
 	person.position = _random_spot()
+	var sprite := VillagerArt.make_sprite(_hair_style(id), chief)
+	sprite.name = "Sprite"
+	sprite.set_instance_shader_parameter("tunic", tunic)
+	sprite.set_instance_shader_parameter("hair", VillagerArt.HAIR_COLORS[posmod(hash(id * 7919), VillagerArt.HAIR_COLORS.size())])
+	person.add_child(sprite)
+	person.add_child(VillagerArt.make_shadow())
 	add_child(person)
-	_people.append(person)
-	_targets.append(_random_spot())
-	_phases.append(_rng.randf() * TAU)
+	_people[id] = person
+	_targets[id] = _random_spot()
+	_phases[id] = _rng.randf() * TAU
 	_pop_in(person)
+
+
+func _remove_person(id: int) -> void:
+	var person := _people[id] as Node3D
+	if _focus_ring and _focus_ring.get_parent() == person:
+		person.remove_child(_focus_ring)
+	_people.erase(id)
+	_targets.erase(id)
+	_phases.erase(id)
+	var tween := create_tween()
+	tween.tween_property(person, "scale", Vector3.ONE * 0.01, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tween.tween_callback(person.queue_free)
+
+
+func _hair_style(id: int) -> int:
+	return posmod(id, VillagerArt.HAIR.size())
 
 
 func _random_spot() -> Vector3:
@@ -137,6 +188,12 @@ func _pop_in(node: Node3D) -> void:
 	var final_scale := node.scale
 	node.scale = Vector3.ONE * 0.01
 	create_tween().tween_property(node, "scale", final_scale, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _notification(what: int) -> void:
+	# The focus ring lives outside the tree while nobody here is inspected.
+	if what == NOTIFICATION_PREDELETE and _focus_ring and _focus_ring.get_parent() == null:
+		_focus_ring.free()
 
 
 ## Shrinks the camp away, then frees it.

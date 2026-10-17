@@ -12,7 +12,7 @@ A good dilemma:
   - rain: months of blessed rain (positive) or drought (negative), -12 to 12, whole valley (tribe "")
   - influence: the god's Influence, -3 to 3 (tribe "")
   - kindness: how kind the people think the god is, -2 to 2 (tribe ""). Cruel choices lower it.
-  - relation: how the card's tribe and the named tribe feel about each other, -40 to 40. Needs the card to be about a tribe. Rivals at -50 or worse may go to war; friends at 30 or better may merge when one is small.
+  - relation: how the card's tribe and the named tribe feel about each other, -40 to 40. Needs the card to be about a tribe. Rivals at -50 or worse may go to war; friends at 25 or better may merge when one is small.
   Use 1 to 3 effects per choice. Doing nothing is a valid choice, but it should still cost something.
 
 Tone level: {tone} on a scale of 1 (gentle fable) to 5 (grim chronicle). Hard choices are fine at any level, but never describe violence or suffering graphically.

@@ -20,6 +20,8 @@ func complete(request: AIRequest) -> AIResponse:
 			return AIResponse.success(get_id(), _chronicle(request))
 		"dilemma":
 			return AIResponse.success(get_id(), _dilemma(request))
+		"thought":
+			return AIResponse.success(get_id(), {"thought": thought(request)})
 	return AIResponse.failure(get_id(), "Offline templates don't cover task '%s'" % request.task)
 
 
@@ -225,3 +227,65 @@ func _worst_relation(world: Dictionary) -> Dictionary:
 		if worst.is_empty() or int(bond["relation"]) < int(worst["relation"]):
 			worst = bond
 	return worst
+
+
+const TRAIT_LINES := {
+	"brave": ["Let them come. I am not afraid.", "Someone has to go first. It may as well be me."],
+	"fierce": ["If anyone crosses the stream again, we fight.", "Soft hands make hungry children."],
+	"kind": ["We should share what we have.", "Even a stranger is welcome at our fire."],
+	"cheerful": ["Still, the fire is warm tonight.", "Someone sang this morning, and everyone joined in."],
+	"wise": ["Patience. Hard years pass, like the others did.", "Store a little more than you think you need."],
+	"proud": ["The %s bow to no one.", "Our fire burned here before any other."],
+	"curious": ["I wonder what lies past the far hills.", "The clouds below the island must end somewhere."],
+	"devout": ["I will leave an offering for the sky tonight.", "The sky is watching. I can feel it."],
+	"greedy": ["I keep a little extra hidden. Just in case.", "Why should the others eat what we gathered?"],
+	"lazy": ["Tomorrow, maybe.", "The berries will still be there after a nap."],
+}
+
+
+## A first-person thought from a citizen description (see Citizens.describe).
+func thought(request: AIRequest) -> String:
+	var who := request.context
+	var rng := RandomNumberGenerator.new()
+	rng.seed = request.seed_value
+	var needs: Dictionary = who.get("needs", {})
+	var worst := ""
+	for need: String in needs:
+		if worst.is_empty() or float(needs[need]) < float(needs[worst]):
+			worst = need
+	var neighbors: Array = who.get("neighbors", [])
+	var rival := ""
+	var friend := ""
+	for neighbor: Dictionary in neighbors:
+		if rival.is_empty() and int(neighbor["relation"]) <= -25:
+			rival = neighbor["tribe"]
+		if friend.is_empty() and int(neighbor["relation"]) >= 25:
+			friend = neighbor["tribe"]
+	var concern := ""
+	if worst and float(needs[worst]) < 0.5:
+		match worst:
+			"food":
+				concern = "The stores are nearly bare, and the little ones keep asking for more."
+			"water":
+				concern = "%s is so low we drink mud. Someone must find new water." % String(who.get("drinks_from", "The spring")).capitalize()
+			"room":
+				concern = "Too many fires on too little land. Soon someone will have to leave."
+			"safety":
+				concern = "I don't sleep well. The %s watch us from the hills." % rival if rival else "I don't sleep well these nights."
+	elif rival:
+		concern = "The %s cannot be trusted." % rival
+	elif friend and rng.randf() < 0.5:
+		concern = "Our cousins the %s are good people." % friend
+	elif int(who.get("god_kindness", 0)) <= -3:
+		concern = "The sky is angry with us. What did we do?"
+	elif int(who.get("god_kindness", 0)) >= 3:
+		concern = "The sky has been good to us."
+	if who.get("is_chief", false) and concern:
+		concern = "As chief, I carry this: " + concern.left(1).to_lower() + concern.substr(1)
+	var traits: Array = who.get("traits", [])
+	var trait_id := String(traits[rng.randi_range(0, traits.size() - 1)]) if not traits.is_empty() else ""
+	var lines: Array = TRAIT_LINES.get(trait_id, ["Another day in the valley."])
+	var line := String(lines[rng.randi_range(0, lines.size() - 1)])
+	if line.contains("%s"):
+		line = line % who.get("tribe", "people")
+	return ("%s %s" % [concern, line]).strip_edges()

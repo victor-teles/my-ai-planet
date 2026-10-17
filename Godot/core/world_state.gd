@@ -30,10 +30,18 @@ var water_names := PackedStringArray()
 var water_capacity := PackedFloat64Array() ## people a full source can serve without falling
 var water_level := PackedFloat64Array() ## 0 is dry, 1 is full
 
+# Citizens: the named notables of each tribe (see Citizens). Parallel arrays like the tribes.
+var citizen_ids := PackedInt32Array() ## stable, so views can follow someone across deaths and births
+var citizen_names := PackedStringArray()
+var citizen_tribes := PackedStringArray()
+var citizen_born := PackedInt32Array() ## tick of birth
+var citizen_traits := PackedStringArray() ## two trait ids joined by "|"
+var next_citizen_id: int = 0
+
 ## How the tribes feel about each other: "A|B" (names sorted) -> -100 (blood feud) to 100 (kin).
 ## Pairs that aren't here are 0, so a new tribe starts as strangers to everyone.
 var relations: Dictionary = {}
-const KIN_RELATION := 25 ## a tribe that splits off starts out this friendly with the one it left
+const KIN_RELATION := 40 ## a tribe that splits off starts out this friendly with the one it left
 
 # The player god
 const MAX_INFLUENCE := 12.0
@@ -60,7 +68,9 @@ static func create(new_seed: int) -> WorldState:
 	state.add_water("the Pond", 260.0)
 	state.add_water("%s Spring" % NameGen.tribe_name(state.rng), 130.0)
 	state.add_water("%s Spring" % NameGen.tribe_name(state.rng), 130.0)
-	state.add_tribe(NameGen.tribe_name(state.rng), 30, 60.0, 0)
+	var first := state.add_tribe(NameGen.tribe_name(state.rng), 30, 60.0, 0)
+	for c: int in Citizens.target_count(state.tribe_population[first]):
+		state.add_citizen(state.tribe_names[first], state.rng.randi_range(Citizens.COMING_OF_AGE_MIN, 55))
 	return state
 
 
@@ -119,11 +129,15 @@ func add_tribe(tribe_name: String, population: int, food: float, water: int) -> 
 	return tribe_names.size() - 1
 
 
+## Removes a tribe and its citizens. To keep the citizens (a merge), move them first.
 func remove_tribe(index: int) -> void:
 	var gone := tribe_names[index]
 	for key: String in relations.keys():
 		if gone in key.split("|"):
 			relations.erase(key)
+	for c: int in range(citizen_ids.size() - 1, -1, -1):
+		if citizen_tribes[c] == gone:
+			remove_citizen(c)
 	tribe_names.remove_at(index)
 	tribe_population.remove_at(index)
 	tribe_food.remove_at(index)
@@ -139,8 +153,47 @@ func split_tribe(index: int, leaving: int) -> int:
 	var new_name := NameGen.tribe_name(rng)
 	var new_index := add_tribe(new_name, leaving, food, roomiest_water())
 	set_relation(tribe_names[index], new_name, KIN_RELATION)
+	# The young lead the way out.
+	var members := citizens_of(tribe_names[index])
+	members.sort_custom(func(a: int, b: int) -> bool: return citizen_born[a] > citizen_born[b])
+	for c: int in members.slice(0, mini(Citizens.target_count(leaving), members.size() - 1)):
+		citizen_tribes[c] = new_name
 	log_event("tribe_split", {"from": tribe_names[index], "to": new_name, "people": leaving})
 	return new_index
+
+
+## Adds a citizen of the given age with a fresh name and traits. Returns their id.
+func add_citizen(tribe_name: String, age_years: int) -> int:
+	var id := next_citizen_id
+	next_citizen_id += 1
+	citizen_ids.append(id)
+	citizen_names.append(NameGen.person_name(rng))
+	citizen_tribes.append(tribe_name)
+	citizen_born.append(tick - age_years * MONTHS_PER_YEAR)
+	citizen_traits.append("|".join(Citizens.random_traits(rng)))
+	return id
+
+
+func remove_citizen(c: int) -> void:
+	citizen_ids.remove_at(c)
+	citizen_names.remove_at(c)
+	citizen_tribes.remove_at(c)
+	citizen_born.remove_at(c)
+	citizen_traits.remove_at(c)
+
+
+func citizens_of(tribe_name: String) -> Array[int]:
+	var members: Array[int] = []
+	for c: int in citizen_ids.size():
+		if citizen_tribes[c] == tribe_name:
+			members.append(c)
+	return members
+
+
+func move_citizens(from_tribe: String, to_tribe: String) -> void:
+	for c: int in citizen_ids.size():
+		if citizen_tribes[c] == from_tribe:
+			citizen_tribes[c] = to_tribe
 
 
 func add_water(water_name: String, capacity: float) -> void:
@@ -233,6 +286,9 @@ func summarize(recent_event_count: int = 10) -> Dictionary:
 			"drinks_from": water_names[tribe_water[i]],
 			"mood": Needs.mood_word(Needs.mood(self, i)),
 		})
+		var leader := Citizens.chief(self, tribe_names[i])
+		if leader != -1:
+			tribes[-1]["chief"] = {"name": citizen_names[leader], "traits": Array(Citizens.traits_of(self, leader))}
 	var water: Array[Dictionary] = []
 	for w: int in water_names.size():
 		water.append({"name": water_names[w], "fullness": snappedf(water_level[w], 0.01), "drinkers": drinkers(w)})
@@ -275,6 +331,12 @@ func to_dict() -> Dictionary:
 		"water_capacity": Array(water_capacity),
 		"water_level": Array(water_level),
 		"relations": relations,
+		"citizen_ids": Array(citizen_ids),
+		"citizen_names": Array(citizen_names),
+		"citizen_tribes": Array(citizen_tribes),
+		"citizen_born": Array(citizen_born),
+		"citizen_traits": Array(citizen_traits),
+		"next_citizen_id": next_citizen_id,
 		"events": events,
 		"next_event_id": next_event_id,
 		"influence": influence,
@@ -304,6 +366,12 @@ static func from_dict(data: Dictionary) -> WorldState:
 	state.water_level = PackedFloat64Array(data["water_level"])
 	for key: String in data["relations"]:
 		state.relations[key] = int(data["relations"][key])
+	state.citizen_ids = PackedInt32Array(data["citizen_ids"])
+	state.citizen_names = PackedStringArray(data["citizen_names"])
+	state.citizen_tribes = PackedStringArray(data["citizen_tribes"])
+	state.citizen_born = PackedInt32Array(data["citizen_born"])
+	state.citizen_traits = PackedStringArray(data["citizen_traits"])
+	state.next_citizen_id = int(data["next_citizen_id"])
 	state.next_event_id = int(data["next_event_id"])
 	state.influence = float(data["influence"])
 	state.kindness = int(data["kindness"])

@@ -11,7 +11,8 @@ The rules every asset is checked against. The look: a hand-painted miniature wor
 | Light bands | 3 steps (half-Lambert, floored) | `art/shaders/toon.gdshader` |
 | Shadows | Never grey or black: the environment's ambient color (violet) fills them | `Diorama._build_environment` |
 | Rim light | Thin warm rim on the lit side | toon shader `rim_*` |
-| Outlines | Ink `#291a33`, inverted hull. Island 0.06, props 0.025–0.03, people 0.015 | `art/shaders/outline.gdshader` |
+| Outlines | Ink `#291a33`, inverted hull. Island 0.06, props 0.025–0.03. People have their ink drawn in | `art/shaders/outline.gdshader` |
+| Brush strokes | A painted stroke texture, projected from three sides, varies value ±22% and warmth ±12% on every toon surface | `art/textures/brush_strokes.png`, toon shader `stroke_*` |
 | Clouds | Unlit painted gradient, bright tops to lavender bottoms, 4 steps | `art/shaders/cloud.gdshader` |
 | Water | Flat color, two tones, a foam line where it meets the shore | `art/shaders/water.gdshader` |
 | Camera | 32° field of view, near and far blur (tilt-shift miniature) | `game/diorama/camera_rig.gd` |
@@ -38,17 +39,34 @@ Each era has a sky, ambient (shadow) color, sun color and fog color. Only Era 3 
 | Rock underside | `#855c75` → `#5c3352` |
 | Pines / leafy trees | `#337a70` / `#80b857` |
 | Thatch roofs | `#db9e5c`, tinted 25% toward the tribe's hue |
-| People | tunic in the tribe's hue, skin `#f5c79e` |
+| People | tunic in the tribe's hue, skin `#f5c79e`, hair from four browns to sand |
+| Chief's headband | `#9c3b34`, feathers `#e8553d` and `#f5c040` |
 
 **Drought:** green tones shift toward straw `#cca866` (the toon shader's `dryness`) and back when the rain returns. The world's state should always be readable from the colors.
 
 ## Motion
 
 - Things appear by popping in (scale with an overshoot, 0.45 s) and leave by shrinking (0.6 s).
-- People hop as they walk, squashing on landing.
+- People hop as they walk, squashing on landing, switching between their two drawn frames and facing the way they walk.
 - Fires flicker in both flame height and light.
 - The camera drifts slowly when nobody touches it.
 
-## Placeholders
+## People
 
-Everything is built from primitive shapes with the final shading, so the look can be judged now. Painted assets replace them one at a time, and each replacement must keep the silhouette size and the color in this table.
+People are hand-drawn billboards (`art/characters/`, SVG), chibi proportions: the head is half the height. They always face the camera but stay upright (`art/shaders/villager.gdshader`).
+
+| Layer | File | Notes |
+|---|---|---|
+| Body, two walk frames | `villager_body_a.svg`, `villager_body_b.svg` | Legs, arms, tunic, face. A stride and a passing pose |
+| Hair | `villager_hair_1.svg` … `_3.svg` | Tuft, long, bun |
+| Chief | `villager_chief.svg` | Feathered headband, drawn over the hair |
+
+Each layer is 96 × 128 and drawn on the same canvas, so they stack. Ink is drawn into the art (3.5 px strokes, round joins). **Key colors:** paint the tunic in magenta (`#ff00ff`, folds `#b300b3`) and the hair in green (`#00ff00`, shade `#00a000`). The shader swaps them for the tribe's tunic color and each person's hair color and keeps the shading. Don't use magenta or green anywhere else on a character.
+
+## Painted textures
+
+`tools/paint_textures.gd` paints `brush_strokes.png` from a fixed seed: red is light and dark strokes, green is warm and cool strokes. A hand-painted texture can replace it, as long as it tiles and stays centered on mid-grey (0.5 means no change).
+
+## Placeholders left
+
+Trees, huts, rocks and the campfire are still primitive shapes with the final shading and brush strokes. Painted assets replace them one at a time, and each replacement must keep the silhouette size and the color in the tables above.

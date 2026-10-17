@@ -180,21 +180,22 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 - [x] One floating-island diorama as a target "beauty shot" (procedural placeholder geometry, see `docs/screenshots/`)
 - [x] The live sim drawn on the island: camps, huts and hopping people grow with each tribe; drought turns the grass to straw; events pop up as floating text
 - [x] Palette and lighting for Era 3, written down in `docs/ART_BIBLE.md`
-- [ ] Hand-painted textures and 2D billboard characters to replace the primitive placeholders
+- [x] Hand-drawn 2D billboard villagers (SVG layers: two walk frames, three hair styles, a chief's headband; tunic and hair recolored per tribe and person) and a painted brush-stroke texture on every toon surface
+- [ ] Painted trees, huts and rocks to replace the last primitive placeholders
 
 **Exit:** one screenshot that looks good enough to post publicly.
 
 ### M2 — Vertical Slice: "First Fires" (Era 3) (6–8 weeks)
 *Prove the whole loop on one era before building the other five.*
 - [x] Systems: food, rain and droughts, population growth, famine, tribe splits (first-pass numbers)
-- [ ] Systems: water sources, needs, relationships between tribes, conflict and merging
-- [ ] Citizens with names, traits, and an inspector panel
+- [x] Systems: water sources (a pond and two springs that rain fills and drinking drains), needs (food, water, room, safety → mood), relationships between tribes, wars and merging
+- [x] Citizens with names, ages and traits (one per figure; the oldest is chief and their traits steer the tribe), and an inspector panel with AI-written thoughts (small tier, offline fallback)
 - [x] **Oracle prophecy** at the start of each cycle → tracked as a measurable condition, checked yearly by the sim
 - [x] 4 miracles (Rain, Harvest, Drought, Plague), Influence economy, kindness → tone of the AI's writing
 - [x] AI-generated dilemma cards with sim-validated effects (with offline fallback), every ~20 years or sooner after drama
 - [x] End-of-prophecy **reveal + chronicle** screen: the AI explains what happened and why, citing the player's miracles
 - [x] Time controls (pause and three speeds), click a camp to choose a tribe
-- [x] First balance pass with a repeatable report (`Godot/tools/balance_report.gd`): a drought every ~20 years, about 3 miracles per prophecy, offline prophecies about 50/50
+- [x] First balance pass with a repeatable report (`Godot/tools/balance_report.gd`): a drought every ~20 years, about 3 miracles per prophecy, offline prophecies about 50/50. With the new systems, a 300-year run has about 6 wars, 3 merges and a dozen low-water spells
 
 **Exit:** 5 playtesters each finish a 30–45 min session, can explain *why* their prophecy came true or broke, and at least 3 of them want to play again.
 

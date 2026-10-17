@@ -2,9 +2,10 @@ class_name RelationsSystem
 extends SimSystem
 ## Once a year the tribes' feelings for each other shift: old feelings fade, sharing a full
 ## spring makes neighbors, sharing a failing one makes rivals, and the hungry envy the fed.
-## Rivals may go to war; friends may merge when one of them has grown too small to stand alone.
+## Chiefs push it one way or the other (see Citizens.TRAITS). Rivals may go to war; friends may
+## merge when one of them has grown too small to stand alone.
 
-const FADE := 2 ## relations drift this much toward 0 every year
+const FADE := 3 ## relations drift this much toward 0 every year
 const SHARED_WATER_GOOD := 2
 const SHARED_WATER_BAD := -8
 const ENVY := -4 ## a hungry tribe toward a well-fed one
@@ -15,7 +16,7 @@ const WAR_LOSER_SHARE := 0.15
 const WAR_WINNER_SHARE := 0.06
 const WAR_PLUNDER_MONTHS := 3.0
 const WAR_EXHAUSTION := 40 ## a war releases some of the hatred that started it
-const MERGE_AT := 30
+const MERGE_AT := 25
 const MERGE_CHANCE := 0.35
 const MERGE_SMALL := 25 ## a tribe this small (or a quarter of its friend's size) may join its friend
 
@@ -41,6 +42,7 @@ func _drift(state: WorldState, i: int, j: int) -> void:
 	var b := state.tribe_names[j]
 	var value := state.relation(a, b)
 	value -= signi(value) * mini(absi(value), FADE)
+	value += roundi(Citizens.chief_effect(state, a, "relation") + Citizens.chief_effect(state, b, "relation"))
 	if state.tribe_water[i] == state.tribe_water[j]:
 		value += SHARED_WATER_GOOD if Needs.water(state, i) >= 1.0 else SHARED_WATER_BAD
 	var food_i := Needs.food(state, i)
@@ -70,8 +72,8 @@ func _wars(state: WorldState) -> void:
 		var j := state.tribe_index(pair[1])
 		if i == -1 or j == -1 or not state.rng.chance(WAR_CHANCE):
 			continue
-		var strength_i := state.tribe_population[i] * (0.75 + 0.5 * state.rng.randf())
-		var strength_j := state.tribe_population[j] * (0.75 + 0.5 * state.rng.randf())
+		var strength_i := state.tribe_population[i] * (0.75 + 0.5 * state.rng.randf()) * Citizens.chief_effect(state, pair[0], "war")
+		var strength_j := state.tribe_population[j] * (0.75 + 0.5 * state.rng.randf()) * Citizens.chief_effect(state, pair[1], "war")
 		var winner := i if strength_i >= strength_j else j
 		var loser := j if winner == i else i
 		var loser_deaths := ceili(state.tribe_population[loser] * WAR_LOSER_SHARE)
@@ -107,4 +109,5 @@ func _merges(state: WorldState) -> void:
 		state.tribe_population[big] += people
 		state.tribe_food[big] += state.tribe_food[small]
 		state.log_event("tribes_merged", {"from": state.tribe_names[small], "into": state.tribe_names[big], "people": people})
+		state.move_citizens(state.tribe_names[small], state.tribe_names[big])
 		state.remove_tribe(small)
