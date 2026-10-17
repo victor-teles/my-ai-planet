@@ -65,6 +65,26 @@ func advance(ticks: int) -> int:
 	return ran
 
 
+## Shows a dilemma right away (debug and UI tests).
+func present(card: Dilemma) -> void:
+	if phase == Phase.PLAYING and card != null:
+		dilemma = card
+		_set_phase(Phase.DECIDING)
+
+
+## Resolves the current prophecy as broken and shows the given chronicle (debug and UI tests).
+func present_reveal(written: Dictionary) -> void:
+	var state := sim.state
+	if phase != Phase.PLAYING or state.prophecy == null:
+		return
+	state.prophecy.status = Prophecy.Status.BROKEN
+	state.prophecy.resolved_tick = state.tick
+	state.resolved_prophecy = state.prophecy
+	state.prophecy = null
+	chronicle = written
+	_set_phase(Phase.REVEAL)
+
+
 ## Answers the dilemma on screen and lets time run again.
 func choose(index: int) -> void:
 	if phase != Phase.DECIDING:

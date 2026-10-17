@@ -4,12 +4,16 @@ extends Node
 ## Enter: continue after a reveal.
 ## S/L: save/load.  F1: debug panel.
 ## Command-line options (after --): --seed=N  --warmup-years=N  --fast-forward-years=N  --hide-ui
-##   --yaw= --pitch= --distance=
+##   --yaw= --pitch= --distance=  --debug-dilemma=res://path/to/dilemma.json
+##   --debug-chronicle=res://path/to/chronicle.json
 
 const SPEEDS: Array[float] = [4.0, 8.0, 24.0] ## ticks (months) per second
 const SAVE_PATH := "user://debug_save.json"
 const PARCHMENT := Color(0.99, 0.94, 0.84)
 const CLICK_SLOP := 6.0 ## pixels a click may move and still count as a click, not a drag
+const BOTTOM_BAR_ROOM := 96.0 ## screen height kept clear for the miracle bar
+const TOP_ROOM := 40.0
+const SCREEN_SHARE := 0.8 ## how much of the screen the window takes when the game starts
 
 var session: Session
 var diorama: Diorama
@@ -38,9 +42,14 @@ var _card_title := Label.new()
 var _card_situation := Label.new()
 var _card_choices := VBoxContainer.new()
 var _card_shown: Dilemma
+var _card_scroll: ScrollContainer
+var _reveal_scroll: ScrollContainer
+var _reveal_shown: Dictionary = {}
+var _theme := Theme.new()
 
 
 func _ready() -> void:
+	_fit_window_to_screen()
 	var options := _parse_options()
 	var seed_value := int(options.get("seed", Time.get_unix_time_from_system()))
 	var sim := Simulation.create(seed_value)
@@ -62,6 +71,11 @@ func _ready() -> void:
 	_ui.visible = not options.has("hide-ui")
 	await session.begin()
 	session.advance(int(options.get("fast-forward-years", 0)) * WorldState.MONTHS_PER_YEAR)
+	if options.has("debug-dilemma"):
+		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(String(options["debug-dilemma"])))
+		session.present(Dilemma.from_proposal(data, sim.state))
+	if options.has("debug-chronicle"):
+		session.present_reveal(JSON.parse_string(FileAccess.get_file_as_string(String(options["debug-chronicle"]))))
 
 
 func _process(delta: float) -> void:
@@ -118,6 +132,19 @@ func _load() -> void:
 		session.begin()
 
 
+## On high-density screens the default window opens at half its intended size; open at a
+## comfortable share of the screen instead. The 16:9 canvas scales to fill it.
+func _fit_window_to_screen() -> void:
+	var window := get_window()
+	if window.mode != Window.MODE_WINDOWED or DisplayServer.get_name() == "headless":
+		return
+	var usable := Vector2(DisplayServer.screen_get_usable_rect(window.current_screen).size)
+	var width := minf(usable.x * SCREEN_SHARE, usable.y * SCREEN_SHARE * 16.0 / 9.0)
+	if width > window.size.x:
+		window.size = Vector2i(roundi(width), roundi(width * 9.0 / 16.0))
+		window.move_to_center()
+
+
 func _parse_options() -> Dictionary:
 	var options := {}
 	for argument: String in OS.get_cmdline_user_args():
@@ -130,6 +157,7 @@ func _parse_options() -> Dictionary:
 
 func _build_ui() -> void:
 	add_child(_ui)
+	_build_theme()
 
 	_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -155,6 +183,7 @@ func _build_ui() -> void:
 
 func _build_miracle_bar() -> Control:
 	var bar := PanelContainer.new()
+	bar.theme = _theme
 	bar.add_theme_stylebox_override("panel", _parchment_box(12, 10))
 	bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -182,62 +211,67 @@ func _build_miracle_bar() -> Control:
 
 
 func _build_reveal() -> Control:
+	_reveal.theme = _theme
 	_reveal.add_theme_stylebox_override("panel", _parchment_box(16, 28))
-	_reveal.set_anchors_preset(Control.PRESET_CENTER)
-	_reveal.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_reveal.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_reveal.custom_minimum_size = Vector2(620, 0)
 	_reveal.visible = false
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 12)
 	_reveal.add_child(column)
-	for label: Label in [_reveal_outcome, _reveal_title, _reveal_text, _reveal_causes]:
+	for label: Label in [_reveal_outcome, _reveal_title]:
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		label.custom_minimum_size.x = 560
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		column.add_child(label)
 	_inked(_reveal_outcome, 14)
-	_reveal_outcome.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_inked(_reveal_title, 28)
-	_reveal_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 12)
+	for label: Label in [_reveal_text, _reveal_causes]:
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		body.add_child(label)
 	_inked(_reveal_text, 17)
 	_inked(_reveal_causes, 15)
-	var next := Button.new()
-	next.text = "Continue   ⏎"
-	next.focus_mode = Control.FOCUS_NONE
+	_reveal_scroll = _scroll_area(body)
+	column.add_child(_reveal_scroll)
+	var next := _ink_button("Continue   ⏎")
 	next.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	next.add_theme_font_size_override("font_size", 16)
 	next.pressed.connect(session.continue_after_reveal)
 	column.add_child(next)
 	return _reveal
 
 
 func _build_card() -> Control:
+	_card.theme = _theme
 	_card.add_theme_stylebox_override("panel", _parchment_box(16, 26))
-	_card.set_anchors_preset(Control.PRESET_CENTER)
-	_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_card.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_card.custom_minimum_size = Vector2(600, 0)
 	_card.visible = false
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 12)
 	_card.add_child(column)
 	var kicker := Label.new()
-	kicker.text = "A CHOICE FOR THE GOD"
+	kicker.text = "A CHOICE FOR THE GOD   ·   click a choice or press 1–3"
 	kicker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_inked(kicker, 13)
 	column.add_child(kicker)
-	for label: Label in [_card_title, _card_situation]:
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		label.custom_minimum_size.x = 540
-		column.add_child(label)
-	_inked(_card_title, 26)
+	_card_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_card_title.custom_minimum_size.x = 540
 	_card_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_inked(_card_title, 26)
+	column.add_child(_card_title)
+	_card_situation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_card_situation.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_inked(_card_situation, 17)
+	_card_scroll = _scroll_area(_card_situation)
+	column.add_child(_card_scroll)
 	_card_choices.add_theme_constant_override("separation", 8)
 	column.add_child(_card_choices)
 	return _card
 
 
-## Rebuilds the choice buttons when a new dilemma comes up.
+## Rebuilds the choice buttons when a new dilemma comes up. Each choice is one button
+## holding its label and its hint, so the whole block is clickable.
 func _show_card(dilemma: Dilemma) -> void:
 	_card_shown = dilemma
 	for child: Node in _card_choices.get_children():
@@ -248,20 +282,44 @@ func _show_card(dilemma: Dilemma) -> void:
 	_card_situation.text = dilemma.situation
 	for i: int in dilemma.choices.size():
 		var choice: Dictionary = dilemma.choices[i]
-		var button := Button.new()
-		button.text = "%d.  %s" % [i + 1, choice["label"]]
+		var button := _ink_button("%d.  %s\n      %s" % [i + 1, choice["label"], choice["hint"]])
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		button.focus_mode = Control.FOCUS_NONE
-		button.add_theme_font_size_override("font_size", 16)
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		button.custom_minimum_size.x = 540
 		button.pressed.connect(session.choose.bind(i))
 		_card_choices.add_child(button)
-		var hint := Label.new()
-		hint.text = "      " + String(choice["hint"])
-		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		hint.custom_minimum_size.x = 540
-		_inked(hint, 14)
-		hint.add_theme_color_override("font_color", ToonMaterials.INK.lightened(0.3))
-		_card_choices.add_child(hint)
+	_fit(_card, _card_scroll)
+
+
+## Long AI text scrolls inside its panel so the buttons below always stay on screen.
+func _scroll_area(content: Control) -> ScrollContainer:
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size.x = 560
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(content)
+	return scroll
+
+
+## Sizes a panel's scroll area to its text, but never taller than the screen allows.
+func _fit(panel: Control, scroll: ScrollContainer) -> void:
+	scroll.custom_minimum_size.y = 0.0
+	scroll.scroll_vertical = 0
+	# Wrapped labels know their height only after a layout pass at their final width.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var content := scroll.get_child(0) as Control
+	panel.reset_size()
+	var room := get_viewport().get_visible_rect().size.y - BOTTOM_BAR_ROOM - TOP_ROOM - panel.get_combined_minimum_size().y
+	scroll.custom_minimum_size.y = clampf(content.get_combined_minimum_size().y, 48.0, maxf(room, 48.0))
+	panel.reset_size()
+
+
+## Keeps a panel centered in the space between the status line and the miracle bar.
+func _center(panel: Control) -> void:
+	var view := get_viewport().get_visible_rect().size
+	var free := view.y - BOTTOM_BAR_ROOM - TOP_ROOM
+	panel.position = Vector2((view.x - panel.size.x) / 2.0, TOP_ROOM + maxf((free - panel.size.y) / 2.0, 0.0))
 
 
 func _on_miracle(id: String) -> void:
@@ -288,17 +346,23 @@ func _update_ui() -> void:
 	_card.visible = session.phase == Session.Phase.DECIDING
 	if session.dilemma != _card_shown:
 		_show_card(session.dilemma)
+	if _card.visible:
+		_center(_card)
 
 	_reveal.visible = session.phase == Session.Phase.REVEAL
 	if _reveal.visible and state.resolved_prophecy:
-		var came_true := state.resolved_prophecy.status == Prophecy.Status.FULFILLED
-		_reveal_outcome.text = ("THE PROPHECY CAME TRUE" if came_true else "THE PROPHECY WAS BROKEN") + "\n\"%s\"" % state.resolved_prophecy.text
-		_reveal_title.text = String(session.chronicle.get("title", ""))
-		_reveal_text.text = String(session.chronicle.get("text", ""))
-		var causes := PackedStringArray()
-		for cause: Variant in session.chronicle.get("causes", []):
-			causes.append("•  " + String(cause))
-		_reveal_causes.text = "\n".join(causes)
+		if session.chronicle != _reveal_shown:
+			_reveal_shown = session.chronicle
+			var came_true := state.resolved_prophecy.status == Prophecy.Status.FULFILLED
+			_reveal_outcome.text = ("THE PROPHECY CAME TRUE" if came_true else "THE PROPHECY WAS BROKEN") + "\n\"%s\"" % state.resolved_prophecy.text
+			_reveal_title.text = String(session.chronicle.get("title", ""))
+			_reveal_text.text = String(session.chronicle.get("text", ""))
+			var causes := PackedStringArray()
+			for cause: Variant in session.chronicle.get("causes", []):
+				causes.append("•  " + String(cause))
+			_reveal_causes.text = "\n".join(causes)
+			_fit(_reveal, _reveal_scroll)
+		_center(_reveal)
 	if _debug_label.visible:
 		_debug_label.text = _debug_text()
 
@@ -353,6 +417,39 @@ func _inked(label: Label, size: int) -> void:
 	label.add_theme_font_size_override("font_size", size)
 	label.add_theme_color_override("font_color", ToonMaterials.INK)
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+
+
+## Parchment buttons with clear hover and pressed states; disabled ones fade out.
+func _build_theme() -> void:
+	var states := {
+		"normal": Color(0.95, 0.86, 0.68),
+		"hover": Color(1.0, 0.82, 0.48),
+		"pressed": Color(0.90, 0.70, 0.38),
+		"disabled": Color(0.93, 0.89, 0.80),
+	}
+	for state: String in states:
+		var box := StyleBoxFlat.new()
+		box.bg_color = states[state]
+		box.border_color = ToonMaterials.INK if state != "disabled" else ToonMaterials.INK.lightened(0.6)
+		box.set_border_width_all(2)
+		box.set_corner_radius_all(8)
+		box.content_margin_left = 12
+		box.content_margin_right = 12
+		box.content_margin_top = 6
+		box.content_margin_bottom = 6
+		_theme.set_stylebox(state, "Button", box)
+	_theme.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	for color_name: String in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		_theme.set_color(color_name, "Button", ToonMaterials.INK)
+	_theme.set_color("font_disabled_color", "Button", ToonMaterials.INK.lightened(0.55))
+
+
+func _ink_button(text: String) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", 16)
+	return button
 
 
 func _parchment_box(radius: int, padding: int) -> StyleBoxFlat:
