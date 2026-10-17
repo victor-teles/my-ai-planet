@@ -4,13 +4,14 @@ A hand-drawn 2.5D life simulation. You nurture a tiny planet from its first cell
 
 ## Run
 
-Open `Godot/` in Godot 4.7, then press Play. The current build is the M1 look prototype: the live simulation on a floating island.
+Open `Godot/` in Godot 4.7, then press Play. The current build is the first playable loop: the Oracle makes a prophecy, you nudge the world with miracles, and a chronicle tells you how it turned out.
 
 | Key | Action |
 |---|---|
 | Space | Pause |
+| Click a camp | Choose a tribe for Harvest or Plague |
+| Enter | Continue after a reveal |
 | 1 / 2 / 3 | Speed |
-| P | Ask the Oracle for a prophecy |
 | S / L | Save / load |
 | F1 | Debug panel |
 | Drag / wheel | Orbit / zoom |
@@ -23,7 +24,7 @@ Until the AI Settings screen exists, the provider comes from environment variabl
 - Otherwise, if the `claude` or `grok` CLI is installed: uses it with your existing login (Claude Code first).
 - Otherwise: offline templates.
 
-Force one with `MYAIPLANET_AI=offline|anthropic|claude_code|grok_cli`.
+Force one with `MYAIPLANET_AI=offline|anthropic|claude_code|grok_cli`. A typical prophecy plus chronicle costs about $0.04 with Claude Code and $0.13 with Grok CLI.
 
 ## Tests
 
@@ -37,6 +38,6 @@ MYAIPLANET_LIVE_AI=1 scripts/test.sh live_ai # real AI calls (costs money)
 
 ## Screenshots
 
-`scripts/screenshot.sh out.png [frames] -- --seed=42 --warmup-years=110 --distance=15 --pitch=-0.6 --yaw=3.8 --prophecy` renders a frame (it opens a window briefly).
+`scripts/screenshot.sh out.png [frames] -- --seed=42 --warmup-years=110 --distance=15 --pitch=-0.6 --yaw=3.8 --fast-forward-years=200` renders a frame (it opens a window briefly).
 
 ![Village](docs/screenshots/m1-village.png)

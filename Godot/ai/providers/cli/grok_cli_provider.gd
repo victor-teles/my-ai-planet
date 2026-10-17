@@ -6,7 +6,7 @@ extends CliAIProvider
 const EFFORT := {
 	AIRequest.Tier.SMALL: "low",
 	AIRequest.Tier.MEDIUM: "medium",
-	AIRequest.Tier.LARGE: "high",
+	AIRequest.Tier.LARGE: "medium", # "high" regularly takes over two minutes
 }
 
 

@@ -186,13 +186,15 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 
 ### M2 — Vertical Slice: "First Fires" (Era 3) (6–8 weeks)
 *Prove the whole loop on one era before building the other five.*
-- [ ] Systems: food/water, population growth, needs, simple relationships, tribe split/merge
+- [x] Systems: food, rain and droughts, population growth, famine, tribe splits (first-pass numbers)
+- [ ] Systems: water sources, needs, relationships between tribes, conflict and merging
 - [ ] Citizens with names, traits, and an inspector panel
-- [ ] **Oracle prophecy** at the start of the era → tracked as a measurable condition (e.g. `tribe_count_at_war >= 2 by year 300`)
-- [ ] 3–4 miracles, Influence economy
+- [x] **Oracle prophecy** at the start of each cycle → tracked as a measurable condition, checked yearly by the sim
+- [x] 4 miracles (Rain, Harvest, Drought, Plague), Influence economy, kindness → tone of the AI's writing
 - [ ] AI-generated dilemma cards (with offline fallback)
-- [ ] End-of-era **reveal + chronicle** screen
-- [ ] Time controls (pause, 1×, 5×, 20×)
+- [x] End-of-prophecy **reveal + chronicle** screen: the AI explains what happened and why, citing the player's miracles
+- [x] Time controls (pause, 1×, 5×, 20×), click a camp to choose a tribe
+- [ ] Balance pass (droughts are too frequent; Influence piles up during warm-up)
 
 **Exit:** 5 playtesters each finish a 30–45 min session, can explain *why* their prophecy came true or broke, and at least 3 of them want to play again.
 

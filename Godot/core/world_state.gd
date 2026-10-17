@@ -21,6 +21,17 @@ var tribe_names := PackedStringArray()
 var tribe_population := PackedInt32Array()
 var tribe_food := PackedFloat64Array() ## stored food, in person-months
 
+# The player god
+const MAX_INFLUENCE := 12.0
+var influence: float = 5.0
+## Sum of the kindness of every miracle cast: positive is benevolent, negative is wrathful.
+var kindness: int = 0
+var blessed_rain_months: int = 0
+## The Oracle's current prophecy, checked yearly by ProphecySystem. Null between prophecies.
+var prophecy: Prophecy
+## The last prophecy that came true or broke, kept for the reveal.
+var resolved_prophecy: Prophecy
+
 ## What happened, newest last. The Oracle reads this to explain cause and effect.
 var events: Array[Dictionary] = []
 ## Increases with every event, so views can tell which events they haven't shown yet.
@@ -46,6 +57,19 @@ static func year_of(at_tick: int) -> int:
 
 func month() -> int:
 	return tick % MONTHS_PER_YEAR
+
+
+## 1 (gentle fable) to 5 (grim chronicle): how the AI should write about this world.
+## Driven by how kind or wrathful the player has been, and by how the people are doing.
+func tone() -> int:
+	var level := 2.0 - kindness / 3.0
+	if drought_months_left > 0:
+		level += 0.5
+	return clampi(roundi(level), 1, 5)
+
+
+func tribe_index(tribe_name: String) -> int:
+	return Array(tribe_names).find(tribe_name)
 
 
 func tribe_count() -> int:
@@ -116,6 +140,11 @@ func to_dict() -> Dictionary:
 		"tribe_food": Array(tribe_food),
 		"events": events,
 		"next_event_id": next_event_id,
+		"influence": influence,
+		"kindness": kindness,
+		"blessed_rain_months": blessed_rain_months,
+		"prophecy": prophecy.to_dict() if prophecy else null,
+		"resolved_prophecy": resolved_prophecy.to_dict() if resolved_prophecy else null,
 	}
 
 
@@ -133,6 +162,13 @@ static func from_dict(data: Dictionary) -> WorldState:
 	state.tribe_population = PackedInt32Array(data["tribe_population"])
 	state.tribe_food = PackedFloat64Array(data["tribe_food"])
 	state.next_event_id = int(data["next_event_id"])
+	state.influence = float(data["influence"])
+	state.kindness = int(data["kindness"])
+	state.blessed_rain_months = int(data["blessed_rain_months"])
+	if data["prophecy"] is Dictionary:
+		state.prophecy = Prophecy.from_dict(data["prophecy"])
+	if data["resolved_prophecy"] is Dictionary:
+		state.resolved_prophecy = Prophecy.from_dict(data["resolved_prophecy"])
 	for event: Dictionary in data["events"]:
 		state.events.append(_whole_numbers_to_int(event))
 	return state

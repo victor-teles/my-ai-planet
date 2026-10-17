@@ -15,6 +15,8 @@ var op: String = ""
 var target: int = 0
 var deadline_year: int = 0
 var status: Status = Status.PENDING
+var start_tick: int = 0
+var resolved_tick: int = -1
 
 
 ## Turns an AI proposal into a prophecy, or returns null if it breaks the rules.
@@ -30,6 +32,7 @@ static func from_proposal(proposal: Dictionary, state: WorldState) -> Prophecy:
 	prophecy.metric = proposed_metric
 	prophecy.op = proposed_op
 	prophecy.target = maxi(int(proposal.get("value", 0)), 0)
+	prophecy.start_tick = state.tick
 	prophecy.deadline_year = state.year() + clampi(int(proposal.get("years_from_now", MIN_YEARS)), MIN_YEARS, MAX_YEARS)
 	# A prophecy that is already true right now isn't a prediction.
 	if prophecy._condition_met(state):
@@ -45,7 +48,29 @@ func check(state: WorldState) -> Status:
 		status = Status.FULFILLED
 	elif state.year() >= deadline_year:
 		status = Status.BROKEN
+	if status != Status.PENDING:
+		resolved_tick = state.tick
 	return status
+
+
+func to_dict() -> Dictionary:
+	return {
+		"text": text, "metric": metric, "op": op, "target": target, "deadline_year": deadline_year,
+		"status": Status.keys()[status], "start_tick": start_tick, "resolved_tick": resolved_tick,
+	}
+
+
+static func from_dict(data: Dictionary) -> Prophecy:
+	var prophecy := Prophecy.new()
+	prophecy.text = String(data["text"])
+	prophecy.metric = String(data["metric"])
+	prophecy.op = String(data["op"])
+	prophecy.target = int(data["target"])
+	prophecy.deadline_year = int(data["deadline_year"])
+	prophecy.status = Status.keys().find(String(data["status"])) as Status
+	prophecy.start_tick = int(data["start_tick"])
+	prophecy.resolved_tick = int(data["resolved_tick"])
+	return prophecy
 
 
 func _condition_met(state: WorldState) -> bool:

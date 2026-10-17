@@ -19,6 +19,8 @@ static func default_scheduler() -> TickScheduler:
 	var scheduler := TickScheduler.new()
 	scheduler.add_system(ClimateSystem.new())
 	scheduler.add_system(PopulationSystem.new())
+	scheduler.add_system(InfluenceSystem.new())
+	scheduler.add_system(ProphecySystem.new())
 	return scheduler
 
 

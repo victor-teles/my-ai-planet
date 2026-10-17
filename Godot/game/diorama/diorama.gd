@@ -19,6 +19,8 @@ var _last_event_id := -1
 var _dryness := 0.0
 var _clouds := Node3D.new()
 var _sun := DirectionalLight3D.new()
+var _rain := CPUParticles3D.new()
+var _selected := ""
 
 
 func build(seed_value: int) -> void:
@@ -26,7 +28,35 @@ func build(seed_value: int) -> void:
 	_build_environment()
 	_build_island(seed_value)
 	_build_clouds(seed_value)
+	_build_rain()
 	add_child(camera_rig)
+
+
+## The tribe whose camp is drawn closest to a screen position, or "" if none is near.
+func pick_tribe(screen_position: Vector2, max_distance: float = 90.0) -> String:
+	var best := ""
+	var best_distance := max_distance
+	for tribe: String in _camps:
+		var camp := _camps[tribe] as TribeCamp
+		if camera_rig.camera.is_position_behind(camp.global_position):
+			continue
+		var distance := camera_rig.camera.unproject_position(camp.global_position).distance_to(screen_position)
+		if distance < best_distance:
+			best = tribe
+			best_distance = distance
+	return best
+
+
+func select_tribe(tribe: String) -> void:
+	if _camps.has(_selected):
+		(_camps[_selected] as TribeCamp).set_selected(false)
+	_selected = tribe
+	if _camps.has(tribe):
+		(_camps[tribe] as TribeCamp).set_selected(true)
+
+
+func selected_tribe() -> String:
+	return _selected if _camps.has(_selected) else ""
 
 
 func sync(state: WorldState, delta: float) -> void:
@@ -48,6 +78,7 @@ func sync(state: WorldState, delta: float) -> void:
 	_dryness = move_toward(_dryness, target_dryness, delta * 0.5)
 	ToonMaterials.set_dryness(_dryness)
 	_clouds.rotation.y += delta * 0.01
+	_rain.emitting = state.blessed_rain_months > 0
 
 
 ## Skip the pop-ups for events that happened before the view existed (e.g. after loading).
@@ -151,6 +182,25 @@ func _build_clouds(seed_value: int) -> void:
 		_clouds.add_child(cloud)
 
 
+func _build_rain() -> void:
+	var drop := BoxMesh.new()
+	drop.size = Vector3(0.02, 0.35, 0.02)
+	_rain.mesh = drop
+	_rain.material_override = ToonMaterials.emissive(Color(0.7, 0.85, 1.0), Color(0.3, 0.45, 0.7))
+	_rain.amount = 900
+	_rain.lifetime = 1.2
+	_rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	_rain.emission_box_extents = Vector3(IslandShape.RADIUS, 0.5, IslandShape.RADIUS)
+	_rain.direction = Vector3.DOWN
+	_rain.spread = 3.0
+	_rain.initial_velocity_min = 9.0
+	_rain.initial_velocity_max = 11.0
+	_rain.gravity = Vector3.ZERO
+	_rain.position.y = 9.0
+	_rain.emitting = false
+	add_child(_rain)
+
+
 func _add_camp(tribe: String) -> void:
 	var camp := TribeCamp.new()
 	camp.position = shape.camp_slot(_next_slot)
@@ -178,6 +228,18 @@ func _show_event(event: Dictionary) -> void:
 			text = "The rains fail..."
 		"drought_ended":
 			text = "The rains return"
+		"miracle":
+			match String(data["miracle"]):
+				"rain":
+					text = "The sky opens: rain!"
+				"harvest":
+					text = "A bountiful harvest for the %s" % data["tribe"]
+					where = _camp_position(String(data["tribe"]))
+				"drought":
+					text = "The god withholds the rain"
+				"plague":
+					text = "Sickness among the %s" % data["tribe"]
+					where = _camp_position(String(data["tribe"]))
 		_:
 			return
 	var label := Label3D.new()

@@ -20,6 +20,7 @@ var _huts: Array[Node3D] = []
 var _people: Array[Node3D] = []
 var _targets: Array[Vector3] = []
 var _phases := PackedFloat32Array()
+var _selection_ring: MeshInstance3D
 
 
 func setup(name_of_tribe: String, island: IslandShape) -> void:
@@ -49,8 +50,27 @@ func set_population(population: int) -> void:
 		_phases.remove_at(_phases.size() - 1)
 
 
+func set_selected(selected: bool) -> void:
+	if selected and _selection_ring == null:
+		var torus := TorusMesh.new()
+		torus.inner_radius = 2.0
+		torus.outer_radius = 2.15
+		torus.rings = 48
+		_selection_ring = MeshInstance3D.new()
+		_selection_ring.mesh = torus
+		_selection_ring.material_override = ToonMaterials.emissive(Color(1.0, 0.92, 0.6), Color(1.0, 0.8, 0.4))
+		_selection_ring.position.y = 0.15
+		add_child(_selection_ring)
+		_pop_in(_selection_ring)
+	elif not selected and _selection_ring != null:
+		_selection_ring.queue_free()
+		_selection_ring = null
+
+
 func _process(delta: float) -> void:
 	var time := Time.get_ticks_msec() / 1000.0
+	if _selection_ring:
+		_selection_ring.scale = Vector3.ONE * (1.0 + 0.03 * sin(time * 4.0))
 	var flame := _fire.get_node("Flame") as Node3D
 	var flicker := 0.85 + 0.15 * sin(time * 13.0 + _phases.size()) + 0.08 * sin(time * 23.0)
 	flame.scale = Vector3(1.0, flicker, 1.0)

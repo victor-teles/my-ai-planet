@@ -25,12 +25,46 @@ func _check_provider(provider: AIProvider) -> void:
 		])
 
 
+func _check_chronicle(provider: AIProvider) -> void:
+	if not _live() or not provider.is_available():
+		print("        skipped")
+		return
+	var sim := Simulation.create(42)
+	sim.advance(600)
+	var oracle := Oracle.new(provider)
+	oracle.fallback = provider
+	var session := Session.new(sim, oracle)
+	session.sim.state.influence = 10.0
+	await session.begin()
+	session.cast_miracle("harvest", sim.state.tribe_names[0])
+	var years := 0
+	while session.phase == Session.Phase.PLAYING and years < 600:
+		session.advance(WorldState.MONTHS_PER_YEAR)
+		years += 1
+	while session.phase == Session.Phase.CHRONICLING:
+		await Frames.next()
+	assert_eq(session.phase, Session.Phase.REVEAL)
+	assert_true(oracle.last_response.ok, "%s chronicle failed: %s" % [provider.get_id(), oracle.last_response.error])
+	print("        %s [%s] %s\n          %s\n          causes: %s\n          total $%.4f" % [
+		provider.get_id(), Prophecy.Status.keys()[sim.state.resolved_prophecy.status], session.chronicle.get("title"),
+		session.chronicle.get("text"), session.chronicle.get("causes"), oracle.cost_usd,
+	])
+
+
 func test_claude_code_cli() -> void:
 	await _check_provider(ClaudeCodeProvider.new())
 
 
+func test_claude_code_chronicle() -> void:
+	await _check_chronicle(ClaudeCodeProvider.new())
+
+
 func test_grok_cli() -> void:
 	await _check_provider(GrokCliProvider.new())
+
+
+func test_grok_chronicle() -> void:
+	await _check_chronicle(GrokCliProvider.new())
 
 
 func test_anthropic_api() -> void:

@@ -8,6 +8,7 @@ const DROUGHT_CHANCE_PER_YEAR := 0.08
 const DROUGHT_RAIN_FACTOR := 0.6
 const DROUGHT_MIN_MONTHS := 6
 const DROUGHT_MAX_MONTHS := 18
+const BLESSED_RAIN_FACTOR := 1.35
 
 
 func get_id() -> String:
@@ -15,7 +16,7 @@ func get_id() -> String:
 
 
 func update(state: WorldState) -> void:
-	if state.month() == 0 and state.drought_months_left == 0 and state.rng.chance(DROUGHT_CHANCE_PER_YEAR):
+	if state.month() == 0 and state.drought_months_left == 0 and state.blessed_rain_months == 0 and state.rng.chance(DROUGHT_CHANCE_PER_YEAR):
 		state.drought_months_left = state.rng.randi_range(DROUGHT_MIN_MONTHS, DROUGHT_MAX_MONTHS)
 		state.log_event("drought_started", {"months": state.drought_months_left})
 
@@ -25,4 +26,7 @@ func update(state: WorldState) -> void:
 		state.drought_months_left -= 1
 		if state.drought_months_left == 0:
 			state.log_event("drought_ended")
+	if state.blessed_rain_months > 0:
+		rain *= BLESSED_RAIN_FACTOR
+		state.blessed_rain_months -= 1
 	state.rainfall = rain
