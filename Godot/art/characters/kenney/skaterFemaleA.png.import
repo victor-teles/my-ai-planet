@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dgofj53kxw4i3"
-path="res://.godot/imported/villager_chief.svg-842d92f94c73bdb5466716f1b01d5c79.ctex"
+uid="uid://cvpbgnupbdy1v"
+path="res://.godot/imported/skaterFemaleA.png-cb25d82c7bdd6b188d9a4b8e54b99beb.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/characters/villager_chief.svg"
-dest_files=["res://.godot/imported/villager_chief.svg-842d92f94c73bdb5466716f1b01d5c79.ctex"]
+source_file="res://art/characters/kenney/skaterFemaleA.png"
+dest_files=["res://.godot/imported/skaterFemaleA.png-cb25d82c7bdd6b188d9a4b8e54b99beb.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=2.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

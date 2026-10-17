@@ -6,6 +6,7 @@ extends Node3D
 const PEOPLE_PER_HUT := 14
 const MAX_HUTS := 6
 const WANDER_RADIUS := 1.6
+const WALK_SPEED := 0.45 ## world units per second
 
 var tribe_name: String
 var shape: IslandShape
@@ -17,7 +18,8 @@ var _fire: Node3D
 var _huts: Array[Node3D] = []
 var _people: Dictionary = {} ## citizen id -> figure
 var _targets: Dictionary = {} ## citizen id -> where the figure is walking
-var _phases: Dictionary = {} ## citizen id -> offset of its hop
+var _rests: Dictionary = {} ## citizen id -> seconds left standing before walking on
+var _walking: Dictionary = {} ## citizen id -> 0 standing .. 1 walking, eased
 var _chief_id := -1
 var _selection_ring: MeshInstance3D
 var _focus_ring: MeshInstance3D
@@ -53,11 +55,11 @@ func set_citizens(ids: PackedInt32Array, chief_id: int) -> void:
 		if not _people.has(id):
 			_add_person(id, id == chief_id)
 	if chief_id != _chief_id:
-		for id: int in [_chief_id, chief_id]:
-			if _people.has(id):
-				var sprite := _people[id].get_node("Sprite") as MeshInstance3D
-				sprite.material_override = VillagerArt.material(_hair_style(id), id == chief_id)
+		var old_chief := _chief_id
 		_chief_id = chief_id
+		for id: int in [old_chief, chief_id]:
+			if _people.has(id):
+				_replace_figure(id) # puts on (or takes off) the headdress
 
 
 ## The figure of a citizen, or null if this camp doesn't have them.
@@ -96,35 +98,34 @@ func _process(delta: float) -> void:
 	if _selection_ring:
 		_selection_ring.scale = Vector3.ONE * (1.0 + 0.03 * sin(time * 4.0))
 	var flame := _fire.get_node("Flame") as Node3D
-	var flicker := 0.85 + 0.15 * sin(time * 13.0 + _people.size()) + 0.08 * sin(time * 23.0)
+	var flicker := 0.85 + 0.15 * sin(time * 13.0 + _huts.size()) + 0.08 * sin(time * 23.0)
 	flame.scale = Vector3(1.0, flicker, 1.0)
 	(_fire.get_node("Light") as OmniLight3D).light_energy = 1.4 * flicker
-	var camera := get_viewport().get_camera_3d()
-	var screen_right := camera.global_basis.x if camera else Vector3.RIGHT
 	for id: int in _people:
-		_walk(id, delta, time, screen_right)
+		_walk(id, delta)
 	if _focus_ring and _focus_ring.get_parent():
 		_focus_ring.scale = Vector3.ONE * (1.0 + 0.08 * sin(time * 5.0))
 
 
-func _walk(id: int, delta: float, time: float, screen_right: Vector3) -> void:
+## Villagers stroll to a spot, stand a while, then pick another.
+func _walk(id: int, delta: float) -> void:
 	var person := _people[id] as Node3D
 	var to_target: Vector3 = _targets[id] - person.position
 	to_target.y = 0.0
-	if to_target.length() < 0.1:
-		_targets[id] = _random_spot()
+	var moving := to_target.length() > 0.05 and float(_rests[id]) <= 0.0
+	_walking[id] = move_toward(float(_walking[id]), 1.0 if moving else 0.0, delta * 3.0)
+	VillagerArt.set_walking(person, float(_walking[id]))
+	if float(_rests[id]) > 0.0:
+		_rests[id] = float(_rests[id]) - delta
 		return
-	var step := to_target.normalized() * minf(0.6 * delta, to_target.length())
+	if not moving:
+		_targets[id] = _random_spot()
+		_rests[id] = _rng.randf_range(0.5, 4.0)
+		return
+	var step := to_target.normalized() * minf(WALK_SPEED * float(_walking[id]) * delta, to_target.length())
 	person.position += step
 	person.position.y = _ground(person.position)
-	# Little hops with squash and stretch, two drawn frames, facing the way they walk.
-	var phase: float = _phases[id]
-	var hop := absf(sin(time * 9.0 + phase))
-	var sprite := person.get_node("Sprite") as MeshInstance3D
-	sprite.position.y = hop * 0.06
-	sprite.scale = Vector3(1.0 + (1.0 - hop) * 0.1, 1.0 - (1.0 - hop) * 0.08, 1.0)
-	sprite.set_instance_shader_parameter("frame", float(int((time * 9.0 + phase) / PI) % 2))
-	sprite.set_instance_shader_parameter("flip", 1.0 if step.dot(screen_right) < 0.0 else 0.0)
+	person.rotation.y = lerp_angle(person.rotation.y, atan2(to_target.x, to_target.z), minf(delta * 8.0, 1.0))
 
 
 func _add_hut() -> void:
@@ -140,19 +141,36 @@ func _add_hut() -> void:
 
 
 func _add_person(id: int, chief: bool) -> void:
-	var person := Node3D.new()
+	var person := _make_figure(id, chief)
 	person.position = _random_spot()
-	var sprite := VillagerArt.make_sprite(_hair_style(id), chief)
-	sprite.name = "Sprite"
-	sprite.set_instance_shader_parameter("tunic", tunic)
-	sprite.set_instance_shader_parameter("hair", VillagerArt.HAIR_COLORS[posmod(hash(id * 7919), VillagerArt.HAIR_COLORS.size())])
-	person.add_child(sprite)
-	person.add_child(VillagerArt.make_shadow())
 	add_child(person)
 	_people[id] = person
 	_targets[id] = _random_spot()
-	_phases[id] = _rng.randf() * TAU
+	_rests[id] = _rng.randf_range(0.0, 3.0)
+	_walking[id] = 0.0
 	_pop_in(person)
+
+
+## Each citizen always looks the same: their id picks build, hair and skin tone.
+func _make_figure(id: int, chief: bool) -> Node3D:
+	var looks := hash(id * 7919)
+	var person := VillagerArt.make(
+		posmod(id, VillagerArt.LOOKS.size()), chief, tunic,
+		VillagerArt.HAIR_COLORS[posmod(looks, VillagerArt.HAIR_COLORS.size())],
+		VillagerArt.SKIN_TONES[posmod(looks / 7, VillagerArt.SKIN_TONES.size())])
+	VillagerArt.offset_time(person, _rng.randf() * 2.0)
+	return person
+
+
+func _replace_figure(id: int) -> void:
+	var old := _people[id] as Node3D
+	var person := _make_figure(id, id == _chief_id)
+	person.transform = old.transform
+	if _focus_ring and _focus_ring.get_parent() == old:
+		old.remove_child(_focus_ring)
+	add_child(person)
+	_people[id] = person
+	old.queue_free()
 
 
 func _remove_person(id: int) -> void:
@@ -161,14 +179,11 @@ func _remove_person(id: int) -> void:
 		person.remove_child(_focus_ring)
 	_people.erase(id)
 	_targets.erase(id)
-	_phases.erase(id)
+	_rests.erase(id)
+	_walking.erase(id)
 	var tween := create_tween()
 	tween.tween_property(person, "scale", Vector3.ONE * 0.01, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 	tween.tween_callback(person.queue_free)
-
-
-func _hair_style(id: int) -> int:
-	return posmod(id, VillagerArt.HAIR.size())
 
 
 func _random_spot() -> Vector3:

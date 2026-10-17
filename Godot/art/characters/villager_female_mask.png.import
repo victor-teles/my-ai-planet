@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://8fh28373q4rf"
-path="res://.godot/imported/villager_body_b.svg-5fc6aac2acf29220cda156d9a4070cb5.ctex"
+uid="uid://xipr31j8thby"
+path="res://.godot/imported/villager_female_mask.png-52526cc98f1a8879186a40a988cf8fb7.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/characters/villager_body_b.svg"
-dest_files=["res://.godot/imported/villager_body_b.svg-5fc6aac2acf29220cda156d9a4070cb5.ctex"]
+source_file="res://art/characters/villager_female_mask.png"
+dest_files=["res://.godot/imported/villager_female_mask.png-52526cc98f1a8879186a40a988cf8fb7.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=2.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

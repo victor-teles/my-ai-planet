@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://chs548ikv5ona"
-path="res://.godot/imported/villager_hair_2.svg-67a2d82d37ef71f54cc83cc44056735d.ctex"
+uid="uid://delvkm5601d0p"
+path="res://.godot/imported/villager_female_skin.png-98454914965542b27a21be3205a7303a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/characters/villager_hair_2.svg"
-dest_files=["res://.godot/imported/villager_hair_2.svg-67a2d82d37ef71f54cc83cc44056735d.ctex"]
+source_file="res://art/characters/villager_female_skin.png"
+dest_files=["res://.godot/imported/villager_female_skin.png-98454914965542b27a21be3205a7303a.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=2.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

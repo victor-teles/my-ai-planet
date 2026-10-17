@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bqbqrokstlkdi"
-path="res://.godot/imported/villager_hair_3.svg-e15d498c8ea7f5e76916a1d0d4ac1200.ctex"
+uid="uid://cbiim1u64awre"
+path="res://.godot/imported/villager_male_mask.png-1ffb2a042c751fba4594907b12cd9383.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/characters/villager_hair_3.svg"
-dest_files=["res://.godot/imported/villager_hair_3.svg-e15d498c8ea7f5e76916a1d0d4ac1200.ctex"]
+source_file="res://art/characters/villager_male_mask.png"
+dest_files=["res://.godot/imported/villager_male_mask.png-1ffb2a042c751fba4594907b12cd9383.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=2.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

@@ -60,7 +60,7 @@ func pick_citizen(screen_position: Vector2, max_distance: float = 22.0) -> int:
 	for tribe: String in _camps:
 		var camp := _camps[tribe] as TribeCamp
 		for id: int in camp.citizen_ids():
-			var middle := camp.figure(id).global_position + Vector3(0.0, VillagerArt.SIZE.y * 0.5, 0.0)
+			var middle := camp.figure(id).global_position + Vector3(0.0, VillagerArt.HEIGHT * 0.5, 0.0)
 			if camera.is_position_behind(middle):
 				continue
 			var distance := camera.unproject_position(middle).distance_to(screen_position)

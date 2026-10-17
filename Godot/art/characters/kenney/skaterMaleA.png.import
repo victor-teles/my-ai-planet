@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://deray7xujfa07"
-path="res://.godot/imported/villager_hair_1.svg-40248e3a7b35c4c5642a2e032396c30f.ctex"
+uid="uid://fsg41dqc0low"
+path="res://.godot/imported/skaterMaleA.png-1bab52d4cf56841d94b78dd059bdab7e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/characters/villager_hair_1.svg"
-dest_files=["res://.godot/imported/villager_hair_1.svg-40248e3a7b35c4c5642a2e032396c30f.ctex"]
+source_file="res://art/characters/kenney/skaterMaleA.png"
+dest_files=["res://.godot/imported/skaterMaleA.png-1bab52d4cf56841d94b78dd059bdab7e.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=2.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

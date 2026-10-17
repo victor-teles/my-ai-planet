@@ -42,7 +42,9 @@ Balance report (12 seeds, 300 years, offline AI, a bot that plays kindly):
 godot --headless --path Godot -s res://tools/balance_report.gd -- years=300 seeds=12
 ```
 
-The brush-stroke texture is painted by a script: `godot --headless --path Godot -s res://tools/paint_textures.gd`.
+The brush-stroke texture and the villager skins are painted by scripts: `tools/paint_textures.gd` and `tools/paint_villager_skins.gd` (run with `godot --headless --path Godot -s res://tools/<name>.gd`).
+
+Villagers are built on Kenney's [Animated Characters](https://kenney.nl/assets/animated-characters-protagonists) (CC0).
 
 `scripts/test.sh` uses `godot` from your PATH, or `GODOT_PATH`, or `/Applications/Godot.app`.
 

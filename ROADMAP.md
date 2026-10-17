@@ -4,7 +4,7 @@ A life simulation where you nurture a tiny hand-drawn planet from its first cell
 
 - **Platform:** PC (Steam) first: Windows, macOS, Linux
 - **Engine:** Godot 4.7 (Forward+), typed GDScript only
-- **Art:** Hand-drawn 2.5D. Painted diorama worlds (like the *Cloud City* reference) with expressive 2D characters (like *Monster Boy*)
+- **Art:** Stylized 2.5D. Painted, toon-shaded diorama worlds (like the *Cloud City* reference) with low-poly 3D people
 - **AI:** The player brings their own. Options: their own API key (Claude, OpenAI, Gemini…), a local model (Ollama, LM Studio), or an AI CLI already installed on their machine (Claude Code, Codex, Gemini CLI). There is no backend of ours, so we have no server costs.
 
 ---
@@ -145,10 +145,11 @@ There is no fixed "dark" or "light" setting. The world's tone comes from **how y
 
 ## 5. Art direction: hand-drawn 2.5D in Godot
 
-**Recommended approach:** a 3D world with painted textures, plus 2D characters as billboards.
+**Approach:** a 3D world with painted textures and toon shading, and low-poly 3D characters in the same style.
 
 - **World:** low-poly meshes with **hand-painted albedo textures**, a custom toon or "painterly" shader (stepped lighting, colored shadows, soft rim light), and ink outlines from an inverted hull or a screen-space edge pass.
-- **Characters and props:** hand-drawn `Sprite3D` / `AnimatedSprite3D` billboards (in the *Monster Boy* style: bold outlines, squash and stretch).
+- **Characters:** low-poly 3D figures with adult proportions, toon-shaded and outlined like the world (the look of *Planitia* or *Kingdoms and Castles*). Hand-drawn billboards were tried and dropped: they read as stickers on a 3D world, and chibi proportions made adults look like children.
+- **Props:** low-poly meshes with the same shading.
 - **Diorama framing:** the planet is a **floating island / small globe** surrounded by clouds and sky gradients, like the *Cloud City* reference. A perspective camera with a narrow FOV gives a clean 2.5D look, and tilt-shift depth of field makes it feel like a miniature.
 - **Mood by era:** each era gets a palette and lighting LUT. Era 1 is teal bioluminescence, Era 4 is warm parchment gold, Era 6 is neon magenta and purple.
 - **Juice:** wobble on placement, puff particles, things popping in when they are built, and handwritten-style UI with ink-stamp icons.
@@ -180,7 +181,7 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 - [x] One floating-island diorama as a target "beauty shot" (procedural placeholder geometry, see `docs/screenshots/`)
 - [x] The live sim drawn on the island: camps, huts and hopping people grow with each tribe; drought turns the grass to straw; events pop up as floating text
 - [x] Palette and lighting for Era 3, written down in `docs/ART_BIBLE.md`
-- [x] Hand-drawn 2D billboard villagers (SVG layers: two walk frames, three hair styles, a chief's headband; tunic and hair recolored per tribe and person) and a painted brush-stroke texture on every toon surface
+- [x] Low-poly 3D villagers with adult proportions (Kenney's CC0 animated character, our own painted tribal skins; tunic, hair and skin tone vary per tribe and person; chiefs wear a feathered headdress), and a painted brush-stroke texture on every toon surface
 - [ ] Painted trees, huts and rocks to replace the last primitive placeholders
 
 **Exit:** one screenshot that looks good enough to post publicly.
@@ -256,7 +257,7 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 | Player's AI spend | Call only at key moments, use model tiers, cache, show a usage meter, and let players set a per-session budget |
 | AI makes the game "random", not meaningful | AI proposes, the sim decides; prophecies are measurable conditions; the reveal shows the causal chain |
 | Scope explosion (six eras!) | The vertical slice (one era) must be fun before any other era begins. Every era reuses the same loop |
-| Art too expensive for a small team | One strong art bible, modular kits per era, billboards instead of rigged 3D characters |
+| Art too expensive for a small team | One strong art bible, modular kits per era, one shared CC0 character rig with painted skins per era instead of new models |
 | Latency kills the pace | Request the next prophecy or dilemma *ahead of time*, while the player is busy; stream long text |
 | Sim performance in GDScript | Data-oriented design (packed arrays, no Node per citizen), systems that update in batches at different rates, aggregate when zoomed out, and spread work across frames and threads (`WorkerThreadPool`). Profile at every milestone |
 
