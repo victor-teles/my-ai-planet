@@ -38,7 +38,9 @@ func _check_chronicle(provider: AIProvider) -> void:
 	await session.begin()
 	session.cast_miracle("harvest", sim.state.tribe_names[0])
 	var years := 0
-	while session.phase == Session.Phase.PLAYING and years < 600:
+	while session.phase in [Session.Phase.PLAYING, Session.Phase.DECIDING] and years < 600:
+		if session.phase == Session.Phase.DECIDING:
+			session.choose(0)
 		session.advance(WorldState.MONTHS_PER_YEAR)
 		years += 1
 	while session.phase == Session.Phase.CHRONICLING:
@@ -49,6 +51,33 @@ func _check_chronicle(provider: AIProvider) -> void:
 		provider.get_id(), Prophecy.Status.keys()[sim.state.resolved_prophecy.status], session.chronicle.get("title"),
 		session.chronicle.get("text"), session.chronicle.get("causes"), oracle.cost_usd,
 	])
+
+
+func _check_dilemma(provider: AIProvider) -> void:
+	if not _live() or not provider.is_available():
+		print("        skipped")
+		return
+	var sim := Simulation.create(42)
+	sim.advance(12 * 90)
+	var oracle := Oracle.new(provider)
+	oracle.fallback = provider
+	var dilemma := await oracle.request_dilemma(sim.state)
+	assert_true(oracle.last_response.ok, "%s dilemma failed: %s" % [provider.get_id(), oracle.last_response.error])
+	assert_true(dilemma != null, "dilemma should pass schema and sim rules: %s" % oracle.last_response.data)
+	if dilemma:
+		var lines := PackedStringArray(["%s: %s (%s)\n          %s" % [provider.get_id(), dilemma.title, dilemma.tribe, dilemma.situation]])
+		for choice: Dictionary in dilemma.choices:
+			lines.append("          - %s | %s | %s" % [choice["label"], choice["hint"], choice["effects"]])
+		lines.append("          $%.4f" % oracle.cost_usd)
+		print("        " + "\n".join(lines))
+
+
+func test_claude_code_dilemma() -> void:
+	await _check_dilemma(ClaudeCodeProvider.new())
+
+
+func test_grok_dilemma() -> void:
+	await _check_dilemma(GrokCliProvider.new())
 
 
 func test_claude_code_cli() -> void:

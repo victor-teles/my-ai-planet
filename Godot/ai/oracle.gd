@@ -5,6 +5,7 @@ extends RefCounted
 
 const PROPHECY_PROMPT := "prophecy.v1"
 const CHRONICLE_PROMPT := "chronicle.v1"
+const DILEMMA_PROMPT := "dilemma.v1"
 const MAX_CHRONICLE_EVENTS := 40
 
 var provider: AIProvider
@@ -23,6 +24,14 @@ func request_prophecy(state: WorldState) -> Prophecy:
 	var context := state.summarize()
 	var request := _request("prophecy", PROPHECY_PROMPT, context, "world", state)
 	var accept := func(reply: Dictionary) -> Variant: return Prophecy.from_proposal(reply, state)
+	return await _ask(request, accept)
+
+
+func request_dilemma(state: WorldState) -> Dilemma:
+	var context := state.summarize()
+	var request := _request("dilemma", DILEMMA_PROMPT, context, "world", state)
+	request.tier = AIRequest.Tier.MEDIUM
+	var accept := func(reply: Dictionary) -> Variant: return Dilemma.from_proposal(reply, state)
 	return await _ask(request, accept)
 
 

@@ -1,6 +1,7 @@
 extends Node
 ## Runs the era loop (Session), shows the world as a diorama, and hosts the prototype UI.
-## Space: pause.  1/2/3: speed.  Click a camp: select a tribe.  Enter: continue after a reveal.
+## Space: pause.  1/2/3: speed (or choose, while a dilemma card is up).  Click a camp: select a tribe.
+## Enter: continue after a reveal.
 ## S/L: save/load.  F1: debug panel.
 ## Command-line options (after --): --seed=N  --warmup-years=N  --fast-forward-years=N  --hide-ui
 ##   --yaw= --pitch= --distance=
@@ -32,6 +33,11 @@ var _reveal_outcome := Label.new()
 var _reveal_title := Label.new()
 var _reveal_text := Label.new()
 var _reveal_causes := Label.new()
+var _card := PanelContainer.new()
+var _card_title := Label.new()
+var _card_situation := Label.new()
+var _card_choices := VBoxContainer.new()
+var _card_shown: Dilemma
 
 
 func _ready() -> void:
@@ -87,7 +93,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_SPACE:
 			paused = not paused
 		KEY_1, KEY_2, KEY_3:
-			speed_index = key.keycode - KEY_1
+			if session.phase == Session.Phase.DECIDING:
+				session.choose(key.keycode - KEY_1)
+			else:
+				speed_index = key.keycode - KEY_1
 		KEY_ENTER, KEY_KP_ENTER:
 			session.continue_after_reveal()
 		KEY_S:
@@ -140,6 +149,7 @@ func _build_ui() -> void:
 
 	_ui.add_child(_build_miracle_bar())
 	_ui.add_child(_build_reveal())
+	_ui.add_child(_build_card())
 
 
 func _build_miracle_bar() -> Control:
@@ -200,6 +210,59 @@ func _build_reveal() -> Control:
 	return _reveal
 
 
+func _build_card() -> Control:
+	_card.add_theme_stylebox_override("panel", _parchment_box(16, 26))
+	_card.set_anchors_preset(Control.PRESET_CENTER)
+	_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_card.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_card.visible = false
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 12)
+	_card.add_child(column)
+	var kicker := Label.new()
+	kicker.text = "A CHOICE FOR THE GOD"
+	kicker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_inked(kicker, 13)
+	column.add_child(kicker)
+	for label: Label in [_card_title, _card_situation]:
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.custom_minimum_size.x = 540
+		column.add_child(label)
+	_inked(_card_title, 26)
+	_card_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_inked(_card_situation, 17)
+	_card_choices.add_theme_constant_override("separation", 8)
+	column.add_child(_card_choices)
+	return _card
+
+
+## Rebuilds the choice buttons when a new dilemma comes up.
+func _show_card(dilemma: Dilemma) -> void:
+	_card_shown = dilemma
+	for child: Node in _card_choices.get_children():
+		child.queue_free()
+	if dilemma == null:
+		return
+	_card_title.text = dilemma.title
+	_card_situation.text = dilemma.situation
+	for i: int in dilemma.choices.size():
+		var choice: Dictionary = dilemma.choices[i]
+		var button := Button.new()
+		button.text = "%d.  %s" % [i + 1, choice["label"]]
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.focus_mode = Control.FOCUS_NONE
+		button.add_theme_font_size_override("font_size", 16)
+		button.pressed.connect(session.choose.bind(i))
+		_card_choices.add_child(button)
+		var hint := Label.new()
+		hint.text = "      " + String(choice["hint"])
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		hint.custom_minimum_size.x = 540
+		_inked(hint, 14)
+		hint.add_theme_color_override("font_color", ToonMaterials.INK.lightened(0.3))
+		_card_choices.add_child(hint)
+
+
 func _on_miracle(id: String) -> void:
 	session.cast_miracle(id, diorama.selected_tribe())
 
@@ -220,6 +283,10 @@ func _update_ui() -> void:
 		var reason := Miracles.why_not(state, id, tribe)
 		button.disabled = not reason.is_empty() or session.phase != Session.Phase.PLAYING
 		button.tooltip_text = "%s\n%s" % [Miracles.DEFINITIONS[id]["description"], reason]
+
+	_card.visible = session.phase == Session.Phase.DECIDING
+	if session.dilemma != _card_shown:
+		_show_card(session.dilemma)
 
 	_reveal.visible = session.phase == Session.Phase.REVEAL
 	if _reveal.visible and state.resolved_prophecy:
@@ -242,7 +309,7 @@ func _banner_text() -> String:
 			return "The Oracle is gazing into the future..."
 		Session.Phase.CHRONICLING:
 			return "The Chronicler is writing down what happened..."
-		Session.Phase.REVEAL:
+		Session.Phase.REVEAL, Session.Phase.DECIDING:
 			return ""
 	if prophecy == null:
 		return "The Oracle is silent."

@@ -228,6 +228,8 @@ func _show_event(event: Dictionary) -> void:
 			text = "The rains fail..."
 		"drought_ended":
 			text = "The rains return"
+		"dilemma":
+			text = "The god decides: %s" % data["choice"]
 		"miracle":
 			match String(data["miracle"]):
 				"rain":

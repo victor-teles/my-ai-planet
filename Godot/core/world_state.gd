@@ -104,7 +104,7 @@ func log_event(type: String, data: Dictionary = {}) -> void:
 		events = events.slice(events.size() - MAX_EVENTS)
 
 
-## Compact, AI-friendly view of the world. Never includes anything about the player.
+## Compact, AI-friendly view of the world, including the god's standing with the people.
 func summarize(recent_event_count: int = 10) -> Dictionary:
 	var tribes: Array[Dictionary] = []
 	for i: int in tribe_count():
@@ -123,6 +123,7 @@ func summarize(recent_event_count: int = 10) -> Dictionary:
 		"in_drought": drought_months_left > 0,
 		"total_population": total_population(),
 		"tribes": tribes,
+		"god": {"influence": snappedf(influence, 0.1), "kindness": kindness},
 		"recent_events": recent,
 	}
 

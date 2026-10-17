@@ -18,6 +18,8 @@ func complete(request: AIRequest) -> AIResponse:
 			return AIResponse.success(get_id(), _prophecy(request))
 		"chronicle":
 			return AIResponse.success(get_id(), _chronicle(request))
+		"dilemma":
+			return AIResponse.success(get_id(), _dilemma(request))
 	return AIResponse.failure(get_id(), "Offline templates don't cover task '%s'" % request.task)
 
 
@@ -78,4 +80,75 @@ func _chronicle(request: AIRequest) -> Dictionary:
 		"title": "The Prophecy Fulfilled" if came_true else "The Prophecy Broken",
 		"text": "%s %s %s" % [opening, middle, ending],
 		"causes": Array(causes.slice(0, 3)),
+	}
+
+
+func _dilemma(request: AIRequest) -> Dictionary:
+	var world := request.context
+	var tribes: Array = world.get("tribes", [])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = request.seed_value
+	if tribes.is_empty():
+		return {}
+	# The hungriest tribe and the largest tribe drive most dilemmas.
+	var hungry: Dictionary = tribes[0]
+	var largest: Dictionary = tribes[0]
+	for tribe: Dictionary in tribes:
+		if float(tribe["food_months"]) < float(hungry["food_months"]):
+			hungry = tribe
+		if int(tribe["population"]) > int(largest["population"]):
+			largest = tribe
+
+	if world.get("in_drought", false):
+		return {
+			"title": "The Last Well",
+			"situation": "The drought has dried every spring but one, and the %s guard it. Other tribes are coming with empty jars." % largest["name"],
+			"tribe": largest["name"],
+			"choices": [
+				{"label": "Make them share the water", "hint": "Everyone drinks a little. The %s will remember what they gave up." % largest["name"],
+					"effects": [{"type": "food", "tribe": largest["name"], "amount": -2}, {"type": "kindness", "tribe": "", "amount": 1}]},
+				{"label": "Let them keep it", "hint": "The %s will thrive. The others may not forgive." % largest["name"],
+					"effects": [{"type": "food", "tribe": largest["name"], "amount": 2}, {"type": "kindness", "tribe": "", "amount": -1}]},
+				{"label": "Spend your power to call the rain", "hint": "It will cost you dearly.",
+					"effects": [{"type": "rain", "tribe": "", "amount": 6}, {"type": "influence", "tribe": "", "amount": -3}]},
+			],
+		}
+	if float(hungry["food_months"]) < 1.5 and tribes.size() > 1:
+		var neighbor: Dictionary = largest if largest != hungry else tribes[(tribes.find(hungry) + 1) % tribes.size()]
+		return {
+			"title": "Empty Bellies",
+			"situation": "The %s are starving, and they can see the full stores of the %s from their hill." % [hungry["name"], neighbor["name"]],
+			"tribe": hungry["name"],
+			"choices": [
+				{"label": "Turn their eyes to the hunt", "hint": "The forest is dangerous in lean times.",
+					"effects": [{"type": "food", "tribe": hungry["name"], "amount": 2}, {"type": "population", "tribe": hungry["name"], "amount": -8}]},
+				{"label": "Let them raid the %s" % neighbor["name"], "hint": "Food taken is food someone else lacks.",
+					"effects": [{"type": "food", "tribe": hungry["name"], "amount": 3}, {"type": "food", "tribe": neighbor["name"], "amount": -3}, {"type": "kindness", "tribe": "", "amount": -1}]},
+				{"label": "Do nothing", "hint": "The weak will not all survive the winter.",
+					"effects": [{"type": "population", "tribe": hungry["name"], "amount": -12}]},
+			],
+		}
+	if int(largest["population"]) >= 50:
+		return {
+			"title": "The Restless Young",
+			"situation": "The young of the %s say the old fire is too crowded. They want to cross the hills and start their own." % largest["name"],
+			"tribe": largest["name"],
+			"choices": [
+				{"label": "Bless their journey", "hint": "A new tribe will be born. The %s will be smaller." % largest["name"],
+					"effects": [{"type": "split", "tribe": largest["name"], "amount": 0}, {"type": "kindness", "tribe": "", "amount": 1}]},
+				{"label": "Keep the tribe together", "hint": "Crowded fires burn through their food.",
+					"effects": [{"type": "food", "tribe": largest["name"], "amount": -2}, {"type": "influence", "tribe": "", "amount": 1}]},
+			],
+		}
+	var tribe: Dictionary = tribes[rng.randi_range(0, tribes.size() - 1)]
+	return {
+		"title": "A Strange Seed",
+		"situation": "A child of the %s found a seed that grows fast, but its fruit makes some people sick." % tribe["name"],
+		"tribe": tribe["name"],
+		"choices": [
+			{"label": "Let them plant it", "hint": "More food, and some will fall ill.",
+				"effects": [{"type": "food", "tribe": tribe["name"], "amount": 3}, {"type": "population", "tribe": tribe["name"], "amount": -5}]},
+			{"label": "Make them burn it", "hint": "Safe, but they will wonder why the god forbids gifts.",
+				"effects": [{"type": "influence", "tribe": "", "amount": 1}, {"type": "kindness", "tribe": "", "amount": -1}]},
+		],
 	}
