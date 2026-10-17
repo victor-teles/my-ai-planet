@@ -4,10 +4,10 @@ extends SimSystem
 ## don't depend on each platform's math library.
 
 const SEASONAL_RAIN: Array[float] = [0.8, 0.9, 1.1, 1.3, 1.4, 1.3, 1.1, 0.9, 0.8, 0.7, 0.7, 0.8]
-const DROUGHT_CHANCE_PER_YEAR := 0.08
+const DROUGHT_CHANCE_PER_YEAR := 0.045
 const DROUGHT_RAIN_FACTOR := 0.6
-const DROUGHT_MIN_MONTHS := 6
-const DROUGHT_MAX_MONTHS := 18
+const DROUGHT_MIN_MONTHS := 4
+const DROUGHT_MAX_MONTHS := 12
 const BLESSED_RAIN_FACTOR := 1.35
 
 

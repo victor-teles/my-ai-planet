@@ -11,7 +11,7 @@ Open `Godot/` in Godot 4.7, then press Play. The current build is the first play
 | Space | Pause |
 | Click a camp | Choose a tribe for Harvest or Plague |
 | Enter | Continue after a reveal |
-| 1 / 2 / 3 | Speed |
+| 1 / 2 / 3 | Speed, or pick a choice while a dilemma card is up |
 | S / L | Save / load |
 | F1 | Debug panel |
 | Drag / wheel | Orbit / zoom |
@@ -32,6 +32,12 @@ Force one with `MYAIPLANET_AI=offline|anthropic|claude_code|grok_cli`. A typical
 scripts/test.sh                              # all tests, headless
 scripts/test.sh determinism                  # only tests whose name matches
 MYAIPLANET_LIVE_AI=1 scripts/test.sh live_ai # real AI calls (costs money)
+```
+
+Balance report (12 seeds, 300 years, offline AI, a bot that plays kindly):
+
+```sh
+godot --headless --path Godot -s res://tools/balance_report.gd -- years=300 seeds=12
 ```
 
 `scripts/test.sh` uses `godot` from your PATH, or `GODOT_PATH`, or `/Applications/Godot.app`.

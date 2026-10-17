@@ -36,16 +36,27 @@ func _prophecy(request: AIRequest) -> Dictionary:
 			"text": "The %s will not stay one people. Before %d winters pass, the fire will be split in two." % [first_tribe, 40],
 			"metric": "tribe_count", "op": ">=", "value": 2, "years_from_now": 40,
 		}
-	if world.get("in_drought", false) or rng.randf() < 0.5:
-		var survivors := maxi(int(population * 0.6), 1)
+	# Each template aims at an outcome that is roughly a coin toss without the god's help.
+	if world.get("in_drought", false):
+		var survivors := maxi(int(population * 0.85), 1)
 		return {
-			"text": "The sky is closing its hand. Within %d years, hunger will leave fewer than %d souls in the valley." % [30, survivors],
-			"metric": "total_population", "op": "<=", "value": survivors, "years_from_now": 30,
+			"text": "The sky is closing its hand. Within %d years, hunger will leave fewer than %d souls in the valley." % [25, survivors],
+			"metric": "total_population", "op": "<=", "value": survivors, "years_from_now": 25,
 		}
-	var count := tribes.size() + rng.randi_range(2, 3)
+	var largest: Dictionary = tribes[0]
+	for tribe: Dictionary in tribes:
+		if int(tribe["population"]) > int(largest["population"]):
+			largest = tribe
+	if rng.randf() < 0.5:
+		var size := int(int(largest["population"]) * 1.3) + 1
+		return {
+			"text": "The %s will grow mighty. Before %d years pass, %d of them will sit around one fire." % [largest["name"], 30, size],
+			"metric": "largest_tribe_population", "op": ">=", "value": size, "years_from_now": 30,
+		}
+	var count := tribes.size() + 1
 	return {
-		"text": "The valley grows crowded. I see %d fires burning on its hills within %d years." % [count, 60],
-		"metric": "tribe_count", "op": ">=", "value": count, "years_from_now": 60,
+		"text": "The valley grows crowded. I see %d fires burning on its hills within %d years." % [count, 40],
+		"metric": "tribe_count", "op": ">=", "value": count, "years_from_now": 40,
 	}
 
 

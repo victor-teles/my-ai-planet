@@ -14,10 +14,10 @@ enum Phase {
 	DECIDING, ## showing a dilemma card; time is stopped until the player chooses
 }
 
-const DILEMMA_MIN_YEARS := 12
-const DILEMMA_MAX_YEARS := 22
+const DILEMMA_MIN_YEARS := 18
+const DILEMMA_MAX_YEARS := 30
 ## Drama (famine, drought, a split) can bring the next dilemma early, but not sooner than this.
-const DRAMA_MIN_YEARS := 8
+const DRAMA_MIN_YEARS := 12
 const DRAMATIC_EVENTS: Array[String] = ["famine", "drought_started", "tribe_split"]
 
 var sim: Simulation

@@ -28,6 +28,17 @@ func update(state: WorldState) -> void:
 		_update_tribe(state, i, total)
 
 
+## One famine event per tribe per year is enough for the story; hungry months in between are quiet.
+func _recent_famine(state: WorldState, tribe_name: String) -> bool:
+	for j: int in range(state.events.size() - 1, maxi(state.events.size() - 30, 0) - 1, -1):
+		var event := state.events[j]
+		if state.tick - int(event["tick"]) >= WorldState.MONTHS_PER_YEAR:
+			return false
+		if event["type"] == "famine" and event["data"]["tribe"] == tribe_name:
+			return true
+	return false
+
+
 func _update_tribe(state: WorldState, i: int, valley_population: int) -> void:
 	var population := state.tribe_population[i]
 	var crowding := 1.0 / (1.0 + population / TRIBE_CAPACITY + valley_population / VALLEY_CAPACITY)
@@ -40,7 +51,7 @@ func _update_tribe(state: WorldState, i: int, valley_population: int) -> void:
 		var starved := mini(state.rng.round_stochastic(-food / FOOD_EATEN_PER_PERSON * STARVATION_RATE), population)
 		population -= starved
 		food = 0.0
-		if starved >= 3:
+		if starved >= 3 and not _recent_famine(state, state.tribe_names[i]):
 			state.log_event("famine", {"tribe": state.tribe_names[i], "deaths": starved})
 
 	var birth_rate := BIRTH_RATE if fed else BIRTH_RATE * HUNGRY_BIRTH_FACTOR

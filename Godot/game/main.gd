@@ -6,7 +6,7 @@ extends Node
 ## Command-line options (after --): --seed=N  --warmup-years=N  --fast-forward-years=N  --hide-ui
 ##   --yaw= --pitch= --distance=
 
-const SPEEDS: Array[float] = [2.0, 12.0, 120.0] ## ticks (months) per second
+const SPEEDS: Array[float] = [4.0, 8.0, 24.0] ## ticks (months) per second
 const SAVE_PATH := "user://debug_save.json"
 const PARCHMENT := Color(0.99, 0.94, 0.84)
 const CLICK_SLOP := 6.0 ## pixels a click may move and still count as a click, not a drag
@@ -45,6 +45,7 @@ func _ready() -> void:
 	var seed_value := int(options.get("seed", Time.get_unix_time_from_system()))
 	var sim := Simulation.create(seed_value)
 	sim.advance(int(options.get("warmup-years", 0)) * WorldState.MONTHS_PER_YEAR)
+	sim.state.influence = minf(sim.state.influence, WorldState.STARTING_INFLUENCE) # warm-up isn't the player's
 	session = Session.new(sim, Oracle.new(AIProviders.from_environment()))
 
 	diorama = Diorama.new()

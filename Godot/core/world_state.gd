@@ -23,7 +23,8 @@ var tribe_food := PackedFloat64Array() ## stored food, in person-months
 
 # The player god
 const MAX_INFLUENCE := 12.0
-var influence: float = 5.0
+const STARTING_INFLUENCE := 5.0
+var influence: float = STARTING_INFLUENCE
 ## Sum of the kindness of every miracle cast: positive is benevolent, negative is wrathful.
 var kindness: int = 0
 var blessed_rain_months: int = 0
