@@ -1,0 +1,25 @@
+class_name AIResponse
+extends RefCounted
+
+var ok: bool = false
+var data: Dictionary = {}
+var error: String = ""
+var provider_id: String = ""
+var input_tokens: int = 0
+var output_tokens: int = 0
+var cost_usd: float = 0.0 ## 0 when the provider doesn't report it
+
+
+static func success(provider: String, reply: Dictionary) -> AIResponse:
+	var response := AIResponse.new()
+	response.ok = true
+	response.provider_id = provider
+	response.data = reply
+	return response
+
+
+static func failure(provider: String, message: String) -> AIResponse:
+	var response := AIResponse.new()
+	response.provider_id = provider
+	response.error = message
+	return response

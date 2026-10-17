@@ -164,14 +164,16 @@ There is no fixed "dark" or "light" setting. The world's tone comes from **how y
 Each milestone ends with a **playable build** and a clear exit criterion. Time estimates assume a solo developer or a very small team working part-time. Adjust them freely.
 
 ### M0 — Foundations (1–2 weeks)
-- [ ] Repo hygiene: Git LFS for art, CI running headless Godot tests (GUT)
-- [ ] Folder structure from §2
-- [ ] `WorldState` + `TickScheduler` + seeded `Rng` with save/load (JSON)
-- [ ] Typed GDScript enforced: turn on the project's untyped-declaration warnings as errors
-- [ ] `AIProvider` interface + `offline_templates` provider + one HTTP provider (Anthropic API key) + one CLI provider (Claude Code)
-- [ ] Debug overlay: tick rate, entity count, AI calls and their cost
+- [ ] Repo hygiene: Git LFS for art (when the first art lands), CI running the headless tests
+- [x] Folder structure from §2
+- [x] `WorldState` + `TickScheduler` + seeded `SimRng` with save/load (JSON)
+- [x] Typed GDScript enforced: untyped declarations are errors
+- [x] `AIProvider` interface + offline templates + Anthropic API-key provider + Claude Code CLI provider
+- [x] Debug overlay: tick rate, population, tribes, events, prophecy, AI calls and their cost
+- [x] Headless test runner (`scripts/test.sh`, a small built-in runner instead of GUT for now)
+- [ ] Live check of the Anthropic API-key provider (needs a key; the Claude Code path is verified)
 
-**Exit:** a headless sim runs 10,000 ticks with the same result for the same seed, and one AI call returns schema-valid JSON.
+**Exit:** a headless sim runs 10,000 ticks with the same result for the same seed, and one AI call returns schema-valid JSON. ✅ Both met.
 
 ### M1 — Art Bible & Look Prototype (2–3 weeks, can overlap M0)
 - [ ] Painterly toon shader, outline pass, cloud skybox, tilt-shift
