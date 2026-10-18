@@ -11,6 +11,8 @@ const DEFAULT_COMFORT := 0.64
 const FIRE_RADIUS := 0.4
 const WALL_THICKNESS := 0.16
 const BODY_RADIUS := 0.18
+const PROBE_REACH := 1.15 ## how far ahead avoid looks
+const NO_ID := -1 ## mover() only stores ids of 0 and up
 
 
 ## A mover dictionary. speed is how fast it is moving now, along its heading.
@@ -57,12 +59,16 @@ static func avoid(mover: Dictionary, obstacles: Array) -> Vector3:
 
 
 ## One tick of arrive + separate + avoid. Returns the next mover plus turn_in_place.
-static func step(mover: Dictionary, target: Vector3, neighbors: Array, obstacles: Array, delta: float) -> Dictionary:
+## grid is neighbor_grid(neighbors), built once per frame for a whole crowd; without it each
+## step hashes the neighbors again, which costs O(n) per mover.
+static func step(mover: Dictionary, target: Vector3, neighbors: Array, obstacles: Array, delta: float, grid: Dictionary = {}) -> Dictionary:
 	var comfort := _comfort_of(mover)
 	var arrive_v := _arrive_velocity(mover, target, SLOW_RADIUS)
-	var separate_v := _separate_velocity(mover, neighbors, comfort)
-	var avoid_v := _avoid_velocity(mover, obstacles)
+	var separate_v := _separate_velocity(mover, neighbors, comfort, grid)
 	var max_speed := float(mover.max_speed)
+	# Only obstacles this step can touch: the probe, the move and the push-out all stay inside reach.
+	obstacles = _within(obstacles, _xz(mover.position), float(mover.get("radius", BODY_RADIUS)) + 0.15 + PROBE_REACH + max_speed * delta)
+	var avoid_v := _avoid_velocity(mover, obstacles)
 	var want := _blend(arrive_v, separate_v, avoid_v, max_speed)
 
 	var heading := float(mover.heading)
@@ -95,7 +101,7 @@ static func step(mover: Dictionary, target: Vector3, neighbors: Array, obstacles
 	var pos := _xz(mover.position)
 	velocity = _slide(pos, velocity, obstacles, float(mover.radius))
 	pos += velocity * delta
-	pos = _nudge(pos, mover, neighbors, delta)
+	pos = _nudge(pos, mover, neighbors, delta, grid)
 	pos = _eject(pos, obstacles, float(mover.radius))
 	pos.y = (mover.position as Vector3).y
 
@@ -124,12 +130,26 @@ static func fire_obstacle(center: Vector3, radius: float = FIRE_RADIUS) -> Dicti
 	return disc_obstacle(center, radius, "fire")
 
 
+## bound and bound_radius: a circle around the whole obstacle, for a cheap first test (_within).
 static func wall_obstacle(a: Vector3, b: Vector3, radius: float = WALL_THICKNESS) -> Dictionary:
-	return {"kind": "wall", "a": _xz(a), "b": _xz(b), "radius": radius}
+	var flat_a := _xz(a)
+	var flat_b := _xz(b)
+	return {"kind": "wall", "a": flat_a, "b": flat_b, "radius": radius,
+		"bound": (flat_a + flat_b) * 0.5, "bound_radius": flat_a.distance_to(flat_b) * 0.5 + radius}
 
 
 static func disc_obstacle(center: Vector3, radius: float, kind: String = "disc") -> Dictionary:
-	return {"kind": kind, "center": _xz(center), "radius": radius}
+	return {"kind": kind, "center": _xz(center), "radius": radius, "bound": _xz(center), "bound_radius": radius}
+
+
+## Obstacles that may come within reach of pos. Ones without a bound always pass.
+static func _within(obstacles: Array, pos: Vector3, reach: float) -> Array:
+	var near: Array = []
+	for obstacle: Dictionary in obstacles:
+		if obstacle.has("bound") and pos.distance_to(obstacle.bound) - float(obstacle.bound_radius) > reach:
+			continue
+		near.append(obstacle)
+	return near
 
 
 static func _arrive_velocity(mover: Dictionary, target: Vector3, slow_radius: float) -> Vector3:
@@ -148,39 +168,46 @@ static func _arrive_velocity(mover: Dictionary, target: Vector3, slow_radius: fl
 	return offset * (speed / distance)
 
 
-static func _separate_velocity(mover: Dictionary, neighbors: Array, comfort: float) -> Vector3:
+static func _separate_velocity(mover: Dictionary, neighbors: Array, comfort: float, shared: Dictionary = {}) -> Vector3:
 	if neighbors.is_empty() or comfort <= 0.0:
 		return Vector3.ZERO
-	var cell := maxf(comfort, 0.05)
-	var grid := _hash_neighbors(neighbors, cell)
+	var grid := _grid_for(neighbors, maxf(comfort, 0.05), shared)
+	var buckets: Dictionary = grid.buckets
+	var spots: PackedVector3Array = grid.spots
+	var ids: PackedInt64Array = grid.ids
+	var radii: PackedFloat32Array = grid.radii
+	var self_id := int(mover.get("id", NO_ID))
+	var own_radius := float(mover.get("radius", BODY_RADIUS))
 	var pos := _xz(mover.position)
-	var origin := _cell_of(pos, cell)
+	var origin := _cell_of(pos, float(grid.cell))
 	var push := Vector3.ZERO
 	var max_speed := float(mover.max_speed)
+	var comfort_sq := comfort * comfort
 	for dz: int in range(-1, 2):
 		for dx: int in range(-1, 2):
 			var key := Vector2i(origin.x + dx, origin.y + dz)
-			if not grid.has(key):
+			if not buckets.has(key):
 				continue
-			var bucket: Array = grid[key]
-			for index: int in bucket:
-				var other: Dictionary = neighbors[index]
-				if _is_self(mover, other):
+			for index: int in buckets[key] as PackedInt32Array:
+				var other_id := ids[index]
+				if self_id != NO_ID and other_id == self_id:
 					continue
-				var away := pos - _xz(other.position)
-				var dist := away.length()
-				if dist >= comfort:
+				var away := pos - spots[index]
+				var dist_sq := away.length_squared()
+				if dist_sq >= comfort_sq:
 					continue
+				var dist := sqrt(dist_sq)
 				if dist <= 0.0001:
-					var spin := float(int(other.get("id", 1)) - int(mover.get("id", 0)))
+					var spin := float((other_id if other_id != NO_ID else 1) - (self_id if self_id != NO_ID else 0))
 					away = Vector3(sin(spin), 0.0, cos(spin))
 					dist = 0.0001
 				else:
 					away /= dist
 				var weight := (comfort - dist) / comfort
-				var radii := float(mover.get("radius", BODY_RADIUS)) + float(other.get("radius", BODY_RADIUS))
+				var other_radius := radii[index]
+				var both := own_radius + (other_radius if other_radius >= 0.0 else BODY_RADIUS)
 				# Full push before the bodies meet, so arrive cannot pack them through each other.
-				if dist < radii + 0.05 or dist < comfort * 0.7:
+				if dist < both + 0.05 or dist < comfort * 0.7:
 					weight = maxf(weight, 1.0)
 				push += away * weight
 	if push.length_squared() < 0.000001:
@@ -189,20 +216,48 @@ static func _separate_velocity(mover: Dictionary, neighbors: Array, comfort: flo
 	return push.normalized() * max_speed * urgency
 
 
-## Cell size is the comfort distance, so anyone inside comfort sits in this cell or a neighbor.
+## One spatial hash for a whole crowd, for step(). Its cell covers the largest comfort and the
+## nudge distance of every mover in it, so a 3x3 lookup still finds everyone close enough.
+static func neighbor_grid(neighbors: Array) -> Dictionary:
+	var cell := BODY_RADIUS * 4.0
+	for other: Dictionary in neighbors:
+		cell = maxf(cell, maxf(_comfort_of(other), float(other.get("radius", BODY_RADIUS)) * 4.0))
+	return _hash_neighbors(neighbors, cell)
+
+
+## The shared grid when it is coarse enough for this lookup, else a fresh hash at cell.
+static func _grid_for(neighbors: Array, cell: float, shared: Dictionary) -> Dictionary:
+	if not shared.is_empty() and float(shared.cell) >= cell:
+		return shared
+	return _hash_neighbors(neighbors, cell)
+
+
+## Anyone within cell of a point sits in its cell or a neighbor. Positions, ids and radii are
+## copied into packed arrays, which are much cheaper to read in the pair loops than dictionaries.
+## ids are NO_ID and radii -1 where a neighbor has none.
 static func _hash_neighbors(neighbors: Array, cell: float) -> Dictionary:
-	var grid := {}
-	for index: int in neighbors.size():
+	var buckets := {}
+	var count := neighbors.size()
+	var spots := PackedVector3Array()
+	var ids := PackedInt64Array()
+	var radii := PackedFloat32Array()
+	spots.resize(count)
+	ids.resize(count)
+	radii.resize(count)
+	for index: int in count:
 		var other: Dictionary = neighbors[index]
-		var key := _cell_of(_xz(other.position), cell)
-		var bucket: Array
-		if grid.has(key):
-			bucket = grid[key]
+		var at := _xz(other.position)
+		spots[index] = at
+		ids[index] = int(other.get("id", NO_ID))
+		radii[index] = float(other.get("radius", -1.0))
+		var key := _cell_of(at, cell)
+		if buckets.has(key):
+			var bucket: PackedInt32Array = buckets[key]
+			bucket.append(index)
+			buckets[key] = bucket
 		else:
-			bucket = []
-			grid[key] = bucket
-		bucket.append(index)
-	return grid
+			buckets[key] = PackedInt32Array([index])
+	return {"cell": cell, "buckets": buckets, "spots": spots, "ids": ids, "radii": radii}
 
 
 static func _avoid_velocity(mover: Dictionary, obstacles: Array) -> Vector3:
@@ -215,11 +270,18 @@ static func _avoid_velocity(mover: Dictionary, obstacles: Array) -> Vector3:
 	var forward := _forward(heading)
 	var vel := _xz(mover.velocity)
 	var steer := Vector3.ZERO
+	# The probe does not depend on the obstacle. It never reaches past PROBE_REACH from pos.
+	var probe := pos + forward * minf(maxf(vel.length(), max_speed * 0.45) * 0.85 + radius, PROBE_REACH)
+	if vel.length_squared() > 0.0004:
+		probe = pos + vel.normalized() * minf(vel.length() * 0.8 + radius, PROBE_REACH)
 	for obstacle: Dictionary in obstacles:
 		var closest := _obstacle_closest(obstacle, pos)
 		var limit := float(obstacle.get("radius", 0.2)) + radius
 		var away := pos - closest
 		var dist := away.length()
+		# Too far for the body or the probe to touch: no effect, so skip the rest.
+		if dist > limit + 0.1 + PROBE_REACH:
+			continue
 		if dist <= 0.0001:
 			away = Vector3(1.0, 0.0, 0.0)
 			dist = 0.0001
@@ -228,9 +290,6 @@ static func _avoid_velocity(mover: Dictionary, obstacles: Array) -> Vector3:
 		if dist < limit:
 			steer += away * max_speed * (1.0 + (limit - dist) / limit)
 			continue
-		var probe := pos + forward * minf(maxf(vel.length(), max_speed * 0.45) * 0.85 + radius, 1.15)
-		if vel.length_squared() > 0.0004:
-			probe = pos + vel.normalized() * minf(vel.length() * 0.8 + radius, 1.15)
 		var ahead := _obstacle_closest(obstacle, probe)
 		var ahead_dist := probe.distance_to(ahead)
 		if ahead_dist >= limit + 0.1:
@@ -275,6 +334,7 @@ static func _slide(pos: Vector3, velocity: Vector3, obstacles: Array, radius: fl
 static func _eject(pos: Vector3, obstacles: Array, radius: float) -> Vector3:
 	var result := pos
 	for _pass: int in 3:
+		var moved := false
 		for obstacle: Dictionary in obstacles:
 			var closest := _obstacle_closest(obstacle, result)
 			var limit := float(obstacle.get("radius", 0.2)) + radius
@@ -289,36 +349,44 @@ static func _eject(pos: Vector3, obstacles: Array, radius: float) -> Vector3:
 				away /= dist
 			# Only the penetration comes back out, and a mover who started outside barely entered.
 			result += away * (limit - dist + 0.001)
+			moved = true
+		# A pass that moved nothing would repeat itself exactly.
+		if not moved:
+			break
 	return result
 
 
-static func _nudge(pos: Vector3, mover: Dictionary, neighbors: Array, delta: float) -> Vector3:
+static func _nudge(pos: Vector3, mover: Dictionary, neighbors: Array, delta: float, shared: Dictionary = {}) -> Vector3:
 	if neighbors.is_empty():
 		return pos
 	var radius := float(mover.get("radius", BODY_RADIUS))
 	# Same grid rule as separate: the cell is at least the distance we care about, so 3x3 is enough.
-	var cell := maxf(_comfort_of(mover), radius * 4.0)
-	var grid := _hash_neighbors(neighbors, cell)
-	var origin := _cell_of(pos, cell)
+	var grid := _grid_for(neighbors, maxf(_comfort_of(mover), radius * 4.0), shared)
+	var buckets: Dictionary = grid.buckets
+	var spots: PackedVector3Array = grid.spots
+	var ids: PackedInt64Array = grid.ids
+	var radii: PackedFloat32Array = grid.radii
+	var self_id := int(mover.get("id", NO_ID))
+	var origin := _cell_of(pos, float(grid.cell))
 	var budget := float(mover.max_speed) * delta
 	var result := pos
 	for dz: int in range(-1, 2):
 		for dx: int in range(-1, 2):
 			var key := Vector2i(origin.x + dx, origin.y + dz)
-			if not grid.has(key):
+			if not buckets.has(key):
 				continue
-			var bucket: Array = grid[key]
-			for index: int in bucket:
-				var other: Dictionary = neighbors[index]
-				if _is_self(mover, other):
+			for index: int in buckets[key] as PackedInt32Array:
+				if self_id != NO_ID and ids[index] == self_id:
 					continue
-				var away := result - _xz(other.position)
-				var dist := away.length()
-				var limit := radius + float(other.get("radius", radius))
-				if dist >= limit:
+				var away := result - spots[index]
+				var other_radius := radii[index]
+				var limit := radius + (other_radius if other_radius >= 0.0 else radius)
+				var dist_sq := away.length_squared()
+				if dist_sq >= limit * limit:
 					continue
+				var dist := sqrt(dist_sq)
 				if dist <= 0.0001:
-					var spin := float(int(mover.get("id", 0)))
+					var spin := float(self_id if self_id != NO_ID else 0)
 					away = Vector3(sin(spin + 1.0), 0.0, cos(spin + 1.0))
 					dist = 0.0001
 				else:
@@ -332,9 +400,11 @@ static func _nudge(pos: Vector3, mover: Dictionary, neighbors: Array, delta: flo
 
 
 static func _obstacle_closest(obstacle: Dictionary, point: Vector3) -> Vector3:
-	var kind := String(obstacle.get("kind", "disc"))
-	if (kind == "wall" or kind == "capsule") and obstacle.has("a") and obstacle.has("b"):
-		return _closest_on_segment(_xz(obstacle.a), _xz(obstacle.b), point)
+	# Discs have no "a", so they skip the kind check.
+	if obstacle.has("a") and obstacle.has("b"):
+		var kind := String(obstacle.get("kind", "disc"))
+		if kind == "wall" or kind == "capsule":
+			return _closest_on_segment(_xz(obstacle.a), _xz(obstacle.b), point)
 	if obstacle.has("center"):
 		return _xz(obstacle.center)
 	return point
@@ -357,10 +427,6 @@ static func _comfort_of(mover: Dictionary) -> float:
 	if mover.has("comfort"):
 		return float(mover.comfort)
 	return DEFAULT_COMFORT
-
-
-static func _is_self(mover: Dictionary, other: Dictionary) -> bool:
-	return mover.has("id") and other.has("id") and mover.id == other.id
 
 
 static func _cell_of(point: Vector3, cell: float) -> Vector2i:
