@@ -30,6 +30,8 @@ var _all_chip: Button
 var _major_toggle: CheckButton
 var _size_button: Button
 var _empty := Label.new()
+var _state: WorldState
+var _local := Callable() ## LocalNames.lookup() for the world shown
 
 
 func _init() -> void:
@@ -130,6 +132,9 @@ func set_filters_open(on: bool) -> void:
 
 ## Call every frame. Adds lines for new events; rebuilds only when the filters change.
 func refresh(state: WorldState) -> void:
+	if state != _state:
+		_state = state
+		_local = LocalNames.lookup(state) # laws and buildings in the tribes' own words
 	if not visible:
 		_dirty = true # rebuilt from the log when it shows again
 		return
@@ -224,7 +229,7 @@ func _row(item: Dictionary) -> Control:
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_child(words)
-	var text := UiStyle.label(EventPacer.burst_text(item) if merged else EventText.text(event), UiStyle.SMALL + 1, true)
+	var text := UiStyle.label(EventPacer.burst_text(item) if merged else EventText.text(event, _local), UiStyle.SMALL + 1, true)
 	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if bool(item["major"]):
 		UiStyle.strong(text)

@@ -301,11 +301,12 @@ func _buildings(state: WorldState, t: int) -> void:
 			built[type] = int(built.get(type, 0)) + 1
 		else:
 			var work := int(Buildings.TYPES[type]["work"])
-			lines.append("⚒ Building a %s: %d%%" % [Buildings.name_of(type), roundi(100.0 * state.building_progress[b] / maxf(work, 1.0))])
+			lines.append("⚒ Building a %s: %d%%" % [_place(state, type), roundi(100.0 * state.building_progress[b] / maxf(work, 1.0))])
 	var have := PackedStringArray()
 	for type: String in Buildings.TYPES:
 		if built.has(type):
-			have.append("%d %s" % [built[type], Buildings.name_of(type) + ("s" if int(built[type]) > 1 else "")])
+			var own := LocalNames.local(state, "buildings", _tribe, type)
+			have.append("%d %s%s" % [built[type], Buildings.name_of(type) + ("s" if int(built[type]) > 1 else ""), " (the %s)" % own if own else ""])
 	_body.add_child(UiStyle.label(", ".join(have) if not have.is_empty() else "Only the fire.", 13, true))
 	for line: String in lines:
 		_body.add_child(UiStyle.label(line, 13, true))
@@ -318,10 +319,16 @@ func _buildings(state: WorldState, t: int) -> void:
 			needs.append("%d more wood" % ceili(float(info["wood"]) - state.tribe_wood[t]))
 		if float(info["stone"]) > state.tribe_stone[t]:
 			needs.append("%d more stone" % ceili(float(info["stone"]) - state.tribe_stone[t]))
-		var what := "rebuild a tent as a hut" if plan.contains("@") else "build a %s" % Buildings.name_of(type)
+		var what := "rebuild a tent as a hut" if plan.contains("@") else "build a %s" % _place(state, type)
 		var label := UiStyle.label("Planned: %s%s" % [what, " (needs %s)" % " and ".join(needs) if not needs.is_empty() else ""], 13, true)
 		label.add_theme_color_override("font_color", ToonMaterials.INK.lightened(0.3))
 		_body.add_child(label)
+
+
+## "temple, the Temple of Kolu" when the tribe has its own name for it, else "temple".
+func _place(state: WorldState, type: String) -> String:
+	var own := LocalNames.local(state, "buildings", _tribe, type)
+	return Buildings.name_of(type) + (", the %s" % own if own else "")
 
 
 func _knowledge(state: WorldState, t: int) -> void:
@@ -389,7 +396,8 @@ func _society_signature(state: WorldState, t: int) -> String:
 	_metrics = Society.metrics(state, t)
 	var parts: Array = [_tribe, _tab, _metrics, state.tribe_laws[t], state.tribe_power[t], state.tribe_culture[t],
 		state.tribe_crisis[t], state.tribe_dynasty[t], state.tribe_overlord[t], state.tribe_chiefs[t],
-		Society.vassals_of(state, _tribe), roundi(SocietySystem.reign_years(state, t)), state.destiny_progress]
+		Society.vassals_of(state, _tribe), roundi(SocietySystem.reign_years(state, t)), state.destiny_progress,
+		AssetBook.source(state, "names", _tribe), AssetBook.signature(state, "names", _tribe)] # the laws' local names
 	return str(parts.hash())
 
 
@@ -637,10 +645,10 @@ func _laws(state: WorldState, t: int) -> void:
 	for law: String in laws:
 		var info: Dictionary = Laws.LAWS[law]
 		var passed := WorldState.year_of(int(state.tribe_laws[t][law]))
-		var name := UiStyle.label(Laws.name_of(law), 14)
+		var name := UiStyle.label(LocalNames.law(state, _tribe, law), 14)
 		name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name.mouse_filter = Control.MOUSE_FILTER_PASS
-		name.tooltip_text = "%s\nPushed by %s. Passed in year %d." % [info["description"], Society.FACTION_NAMES.get(info["faction"], info["faction"]), passed]
+		name.tooltip_text = "%s: %s\nPushed by %s. Passed in year %d." % [Laws.name_of(law), info["description"], Society.FACTION_NAMES.get(info["faction"], info["faction"]), passed]
 		if Laws.is_dystopian(law):
 			dark += 1
 			name.text = "▼ " + name.text

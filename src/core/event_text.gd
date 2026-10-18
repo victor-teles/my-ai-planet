@@ -94,7 +94,9 @@ static func count_since(events: Array[Dictionary], since_tick: int) -> Dictionar
 
 
 ## One line for the feed: "Kael and Mirra married by the fire of the Wokowoul."
-static func text(event: Dictionary) -> String:
+## local: the tribe's own name for a law or a building, called (group: "laws" or "buildings",
+## tribe, id) and returning "" for none (see LocalNames.lookup()); without it the usual names are used.
+static func text(event: Dictionary, local: Callable = Callable()) -> String:
 	var data: Dictionary = event["data"]
 	match String(event["type"]):
 		"birth":
@@ -150,11 +152,11 @@ static func text(event: Dictionary) -> String:
 		"adoption":
 			return "Orphaned, %s was taken in by %s." % [_s(data, "name"), _s(data, "by")]
 		"building_planned":
-			return "The %s plan a %s and need %s." % [_s(data, "tribe"), Buildings.name_of(_s(data, "building")), _s(data, "needs")]
+			return "The %s plan %s and need %s." % [_s(data, "tribe"), _building(data, local), _s(data, "needs")]
 		"building_started":
-			return "The %s began building a %s." % [_s(data, "tribe"), Buildings.name_of(_s(data, "building"))]
+			return "The %s began building %s." % [_s(data, "tribe"), _building(data, local)]
 		"building_done":
-			var line := "The %s finished a %s" % [_s(data, "tribe"), Buildings.name_of(_s(data, "building"))]
+			var line := "The %s finished %s" % [_s(data, "tribe"), _building(data, local)]
 			if _s(data, "builders"):
 				line += ", built by %s" % _s(data, "builders")
 			return line + "."
@@ -230,14 +232,14 @@ static func text(event: Dictionary) -> String:
 					return "The god opened the eyes of the %s: they see their rulers plainly now." % _s(data, "tribe")
 				"sanctify":
 					return "The god blessed %s, ruler of the %s, in front of everyone." % [_s(data, "name"), _s(data, "tribe")]
-	var political := _politics(event)
+	var political := _politics(event, local)
 	if political:
 		return political
 	return String(event["type"]).replace("_", " ")
 
 
 ## The lines for the ages, disasters and politics.
-static func _politics(event: Dictionary) -> String:
+static func _politics(event: Dictionary, local: Callable) -> String:
 	var data: Dictionary = event["data"]
 	var tribe := _s(data, "tribe")
 	match String(event["type"]):
@@ -248,9 +250,9 @@ static func _politics(event: Dictionary) -> String:
 		"disaster":
 			match _s(data, "kind"):
 				"storms":
-					return "A storm tore down the %s's %s." % [tribe, Buildings.name_of(_s(data, "building"))]
+					return "A storm tore down %s." % _building(data, local, true)
 				"quakes":
-					return "The earth shook and the %s's %s fell." % [tribe, Buildings.name_of(_s(data, "building"))]
+					return "The earth shook and %s fell." % _building(data, local, true)
 				"locusts":
 					return "Locusts stripped the fields of the %s." % tribe
 				"blizzards":
@@ -261,14 +263,14 @@ static func _politics(event: Dictionary) -> String:
 		"law_passed":
 			var by := " by %s" % _s(data, "name") if _s(data, "name") else ""
 			var why := " (%s)" % _s(data, "reason") if _s(data, "reason") else ""
-			return "The %s now live under %s, decreed%s%s." % [tribe, Laws.name_of(_s(data, "law")).to_lower(), by, why]
+			return "The %s now live under %s, decreed%s%s." % [tribe, _law(data, local), by, why]
 		"law_repealed":
 			var why := ": %s" % _s(data, "reason") if _s(data, "reason") else ""
-			return "The %s struck down %s%s." % [tribe, Laws.name_of(_s(data, "law")).to_lower(), why]
+			return "The %s struck down %s%s." % [tribe, _law(data, local), why]
 		"law_blocked":
-			return "The council of the %s refused %s's %s." % [tribe, _s(data, "name"), Laws.name_of(_s(data, "law")).to_lower()]
+			return "The council of the %s refused %s's %s." % [tribe, _s(data, "name"), _law(data, local, false)]
 		"law_refused":
-			return "%s demanded %s; %s refused them." % [Society.FACTION_NAMES.get(_s(data, "faction"), "The people").capitalize(), Laws.name_of(_s(data, "law")).to_lower(), _s(data, "name") if _s(data, "name") else "the ruler"]
+			return "%s demanded %s; %s refused them." % [Society.FACTION_NAMES.get(_s(data, "faction"), "The people").capitalize(), _law(data, local), _s(data, "name") if _s(data, "name") else "the ruler"]
 		"new_dynasty":
 			return "%s founds house %s: the %s will be ruled by their blood." % [_s(data, "name"), _s(data, "house"), tribe]
 		"protests":
@@ -277,7 +279,7 @@ static func _politics(event: Dictionary) -> String:
 			return "The anger in the %s has cooled." % tribe
 		"concession":
 			if _s(data, "law"):
-				return "%s gave way to the crowd and struck down %s." % [_s(data, "name"), Laws.name_of(_s(data, "law")).to_lower()]
+				return "%s gave way to the crowd and struck down %s." % [_s(data, "name"), _law(data, local)]
 			return "%s gave way to the crowd and opened the stores." % _s(data, "name")
 		"crackdown":
 			if int(data.get("count", 0)) > 0:
@@ -344,6 +346,27 @@ static func _politics(event: Dictionary) -> String:
 
 static func _s(data: Dictionary, key: String) -> String:
 	return String(data.get(key, ""))
+
+
+## A law as a sentence names it: the tribe's own name ("the Watchful Eye of Kolu"), or the usual
+## one in lower case ("surveillance network"). With article false the own name goes bare.
+static func _law(data: Dictionary, local: Callable, article: bool = true) -> String:
+	var law := _s(data, "law")
+	var own := String(local.call("laws", _s(data, "tribe"), law)) if local.is_valid() else ""
+	if own:
+		return ("the " if article else "") + own
+	return Laws.name_of(law).to_lower()
+
+
+## A building as a sentence names it: "the Temple of Kolu" if the tribe has a name for it, else
+## "a temple". Possessive: "the Kolu's Temple of Kolu" or "the Kolu's temple".
+static func _building(data: Dictionary, local: Callable, possessive: bool = false) -> String:
+	var type := _s(data, "building")
+	var tribe := _s(data, "tribe")
+	var own := String(local.call("buildings", tribe, type)) if local.is_valid() else ""
+	if possessive:
+		return "the %s's %s" % [tribe, own if own else Buildings.name_of(type)]
+	return "the " + own if own else "a " + Buildings.name_of(type)
 
 
 ## The person an event is mostly about (to inspect from the feed), or -1.

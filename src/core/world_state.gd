@@ -67,6 +67,8 @@ var tribe_vassal_since := PackedInt32Array() ## tick it became a vassal, or -1
 var tribe_crisis: Array[Dictionary] = [] ## {"type", "stage", "since", ...} or {} when calm
 var tribe_ruler := PackedInt32Array() ## the ruler SocietySystem last saw, to time their reign
 var tribe_ruler_since := PackedInt32Array() ## tick that ruler took the seat
+## The tongue each tribe names its children in (see Language); {} is the old default sound.
+var tribe_language: Array[Dictionary] = []
 ## Derived, not saved: living people per tribe. Kept in step by add/remove/move person.
 var tribe_population := PackedInt32Array()
 ## Derived, not saved: per tribe, what its laws add up to and what its knowledge is worth. Rebuilt
@@ -182,13 +184,14 @@ static func create(new_seed: int, bands: int = 0) -> WorldState:
 	state.world = WorldGen.generate(new_seed, bands)
 	state.world["camps"] = float(IslandShape.new(state.world, new_seed).camp_count())
 	state.add_water("the Pond", WorldGen.pond_capacity(state.world))
-	for k: int in int(state.world["island"]["springs"]):
-		state.add_water("%s Spring" % NameGen.tribe_name(state.rng), float(state.rng.randi_range(90, 160)))
 	var peoples: Array = state.world["peoples"]
+	for k: int in int(state.world["island"]["springs"]):
+		# The springs are named by the first people to land.
+		state.add_water("%s Spring" % NameGen.tribe_name(state.rng, WorldGen.people_language(peoples[0])), float(state.rng.randi_range(90, 160)))
 	for index: int in peoples.size():
 		var people: Dictionary = peoples[index]
 		var tribe := String(people["name"])
-		var t := state.add_tribe(tribe, index % state.water_names.size(), people["culture"])
+		var t := state.add_tribe(tribe, index % state.water_names.size(), people["culture"], WorldGen.people_language(people))
 		People.found_band(state, tribe, int(people["couples"]))
 		state.tribe_food[t] = state.tribe_population[t] * 75.0
 		state.tribe_wood[t] = 30.0
@@ -334,7 +337,8 @@ func total_population() -> int:
 	return person_ids.size()
 
 
-func add_tribe(tribe_name: String, water: int, culture: Dictionary = {}) -> int:
+## language: the tribe's tongue (see Language), clamped; {} keeps the default sound.
+func add_tribe(tribe_name: String, water: int, culture: Dictionary = {}, language: Dictionary = {}) -> int:
 	tribe_names.append(tribe_name)
 	tribe_food.append(0.0)
 	tribe_wood.append(0.0)
@@ -367,6 +371,7 @@ func add_tribe(tribe_name: String, water: int, culture: Dictionary = {}) -> int:
 	tribe_crisis.append({})
 	tribe_ruler.append(-1)
 	tribe_ruler_since.append(tick)
+	tribe_language.append(Language.clamp_spec(language))
 	tribe_population.append(0)
 	_law_sums.clear()
 	_tech_sums.clear()
@@ -392,7 +397,7 @@ func remove_tribe(index: int) -> void:
 			tribe_metal, tribe_treasury, tribe_legitimacy, tribe_unrest, tribe_fear, tribe_dynasty, tribe_overlord, tribe_vassal_since,
 			tribe_ruler, tribe_ruler_since]:
 		array.remove_at(index)
-	for array: Array in [tribe_knowledge, tribe_work, tribe_culture, tribe_laws, tribe_power, tribe_crisis]:
+	for array: Array in [tribe_knowledge, tribe_work, tribe_culture, tribe_laws, tribe_power, tribe_crisis, tribe_language]:
 		array.remove_at(index)
 	_law_sums.clear()
 	_tech_sums.clear()
@@ -1017,6 +1022,7 @@ func to_dict() -> Dictionary:
 		"tribe_crisis": tribe_crisis,
 		"tribe_ruler": Array(tribe_ruler),
 		"tribe_ruler_since": Array(tribe_ruler_since),
+		"tribe_language": tribe_language,
 		"water_names": Array(water_names),
 		"water_capacity": Array(water_capacity),
 		"water_level": Array(water_level),
@@ -1124,6 +1130,10 @@ static func from_dict(data: Dictionary) -> WorldState:
 	state.tribe_vassal_since = PackedInt32Array(data["tribe_vassal_since"])
 	state.tribe_ruler = PackedInt32Array(data["tribe_ruler"])
 	state.tribe_ruler_since = PackedInt32Array(data["tribe_ruler_since"])
+	# Saves from before languages speak the default sound.
+	var languages: Array = data.get("tribe_language", [])
+	for t: int in state.tribe_names.size():
+		state.tribe_language.append(Language.clamp_spec(languages[t]) if t < languages.size() else {})
 	state.water_names = PackedStringArray(data["water_names"])
 	state.water_capacity = PackedFloat64Array(data["water_capacity"])
 	state.water_level = PackedFloat64Array(data["water_level"])

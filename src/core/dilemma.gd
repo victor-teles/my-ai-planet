@@ -153,7 +153,8 @@ func _apply(state: WorldState, effect: Dictionary) -> void:
 				state.tribe_legitimacy[i] = clampi(state.tribe_legitimacy[i] + roundi(amount), 0, 100)
 
 
-## Strangers from beyond the hills join a tribe: young adults with fresh blood.
+## Strangers from beyond the hills join a tribe: young adults with fresh blood. Their names are
+## in no island tongue (the default sound): they sound foreign until their children are named.
 static func newcomers(state: WorldState, tribe_name: String, count: int) -> void:
 	var ancestry := state.rng.pick_index(Genetics.ANCESTRIES.size())
 	for k: int in count:

@@ -66,7 +66,7 @@ static func give_birth(state: WorldState, mother: int) -> Array[int]:
 		var heredity := Genetics.inherit(state.rng, state.person_genomes[mother], father_genome)
 		var sex := "f" if state.rng.chance(0.5) else "m"
 		var named_after := _honored_name(state, mother_id, father_id, sex)
-		var given := named_after if named_after else NameGen.person_name(state.rng)
+		var given := named_after if named_after else NameGen.person_name(state.rng, Language.of(state, t))
 		var baby := state.add_person(tribe, sex, state.tick, heredity["genome"], mother_id, father_id, family, given)
 		var baby_id := state.person_ids[baby]
 		# Noble blood needs both parents, or the ruling house's name: one noble parent made, within

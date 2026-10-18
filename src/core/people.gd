@@ -382,6 +382,7 @@ static func choose_chief(state: WorldState, t: int, reason: String) -> int:
 ## from two ancestries. Each household gets a tent around the fire.
 static func found_band(state: WorldState, tribe: String, couples: int = FOUNDING_COUPLES) -> void:
 	var rng := state.rng
+	var language := Language.of_tribe(state, tribe) # everyone is named in the band's own tongue
 	var first_ancestry := rng.pick_index(Genetics.ANCESTRIES.size())
 	var second_ancestry := (first_ancestry + 1 + rng.pick_index(Genetics.ANCESTRIES.size() - 1)) % Genetics.ANCESTRIES.size()
 	var ancestry := func() -> int: return first_ancestry if rng.chance(0.6) else second_ancestry
@@ -389,9 +390,9 @@ static func found_band(state: WorldState, tribe: String, couples: int = FOUNDING
 	for k: int in couples:
 		var man_age := rng.randi_range(19, 40)
 		var woman_age := clampi(man_age + rng.randi_range(-5, 2), 17, 40)
-		var family := NameGen.family_name(rng)
-		var man := state.add_person(tribe, "m", -man_age * year - rng.randi_range(0, year - 1), Genetics.founder(rng, ancestry.call()), -1, -1, family, NameGen.person_name(rng))
-		var woman := state.add_person(tribe, "f", -woman_age * year - rng.randi_range(0, year - 1), Genetics.founder(rng, ancestry.call()), -1, -1, NameGen.family_name(rng), NameGen.person_name(rng))
+		var family := NameGen.family_name(rng, language)
+		var man := state.add_person(tribe, "m", -man_age * year - rng.randi_range(0, year - 1), Genetics.founder(rng, ancestry.call()), -1, -1, family, NameGen.person_name(rng, language))
+		var woman := state.add_person(tribe, "f", -woman_age * year - rng.randi_range(0, year - 1), Genetics.founder(rng, ancestry.call()), -1, -1, NameGen.family_name(rng, language), NameGen.person_name(rng, language))
 		var man_id := state.person_ids[man]
 		var woman_id := state.person_ids[woman]
 		state.person_partners[man] = woman_id
@@ -405,16 +406,16 @@ static func found_band(state: WorldState, tribe: String, couples: int = FOUNDING
 		for c: int in children:
 			var child_age := rng.randi_range(0, woman_age - 17)
 			var genome: PackedByteArray = Genetics.inherit(rng, state.person_genomes[woman], state.person_genomes[man])["genome"]
-			var child := state.add_person(tribe, "f" if rng.chance(0.5) else "m", -child_age * year - rng.randi_range(0, year - 1), genome, woman_id, man_id, family, NameGen.person_name(rng))
+			var child := state.add_person(tribe, "f" if rng.chance(0.5) else "m", -child_age * year - rng.randi_range(0, year - 1), genome, woman_id, man_id, family, NameGen.person_name(rng, language))
 			state.person_homes[child] = state.building_ids[tent]
 			state.change_bond(state.person_ids[child], woman_id, 50)
 			state.change_bond(state.person_ids[child], man_id, 45)
 	var spare := state.add_building(tribe, "tent", Buildings.free_slot(state, tribe, "tent")).done(state)
 	for k: int in rng.randi_range(2, 4):
-		var young := state.add_person(tribe, "f" if rng.chance(0.5) else "m", -rng.randi_range(16, 23) * year - rng.randi_range(0, year - 1), Genetics.founder(rng, ancestry.call()), -1, -1, NameGen.family_name(rng), NameGen.person_name(rng))
+		var young := state.add_person(tribe, "f" if rng.chance(0.5) else "m", -rng.randi_range(16, 23) * year - rng.randi_range(0, year - 1), Genetics.founder(rng, ancestry.call()), -1, -1, NameGen.family_name(rng, language), NameGen.person_name(rng, language))
 		state.person_homes[young] = state.building_ids[spare]
 	for k: int in rng.randi_range(1, 2):
-		var elder := state.add_person(tribe, "f" if rng.chance(0.5) else "m", -rng.randi_range(55, 64) * year - rng.randi_range(0, year - 1), Genetics.founder(rng, ancestry.call()), -1, -1, NameGen.family_name(rng), NameGen.person_name(rng))
+		var elder := state.add_person(tribe, "f" if rng.chance(0.5) else "m", -rng.randi_range(55, 64) * year - rng.randi_range(0, year - 1), Genetics.founder(rng, ancestry.call()), -1, -1, NameGen.family_name(rng, language), NameGen.person_name(rng, language))
 		state.person_homes[elder] = state.building_ids[spare]
 	var members := state.people_of(tribe)
 	for p: int in members:
