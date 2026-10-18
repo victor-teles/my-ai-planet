@@ -4,6 +4,9 @@ extends RefCounted
 ## prompt_library/manifest.json, its schema, and its offline writer.
 
 const SCRIPTS: Array[Script] = [
+	preload("res://ai/assets/heraldry_kind.gd"),
+	preload("res://ai/assets/poster_kind.gd"),
+	preload("res://ai/assets/monument_kind.gd"),
 ]
 
 static var _all: Array[AssetKind] = []

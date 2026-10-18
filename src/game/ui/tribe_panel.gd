@@ -389,7 +389,7 @@ func _society_signature(state: WorldState, t: int) -> String:
 	_metrics = Society.metrics(state, t)
 	var parts: Array = [_tribe, _tab, _metrics, state.tribe_laws[t], state.tribe_power[t], state.tribe_culture[t],
 		state.tribe_crisis[t], state.tribe_dynasty[t], state.tribe_overlord[t], state.tribe_chiefs[t],
-		Society.vassals_of(state, _tribe), roundi(SocietySystem.reign_years(state, t)), state.destiny_progress]
+		Society.vassals_of(state, _tribe), roundi(SocietySystem.reign_years(state, t)), state.destiny_progress, _assets_signature(state, t)]
 	return str(parts.hash())
 
 
@@ -405,6 +405,7 @@ func _society(state: WorldState, t: int) -> void:
 		label.tooltip_text = tip
 		_body.add_child(label)
 	_rulers(state, t)
+	_banner(state)
 	_destiny_hint(state, t)
 	_crisis(state, t)
 	_factions(state, t, top)
@@ -412,6 +413,8 @@ func _society(state: WorldState, t: int) -> void:
 	_classes(state, t)
 	_culture(state, t)
 	_laws(state, t)
+	_slogans(state, t)
+	_monuments(state)
 
 
 ## The ruler, their house and how long they've held the seat; whose vassal the tribe is, and its own.
@@ -655,3 +658,94 @@ func _laws(state: WorldState, t: int) -> void:
 		var note := UiStyle.label("▼ dark laws, that pull toward a dystopia. Hover a law for what it does.", 11, true)
 		note.add_theme_color_override("font_color", ToonMaterials.INK.lightened(0.4))
 		_body.add_child(note)
+
+
+# --- Banner, slogans and monuments (AI-authored, or offline until written) --------
+
+## What the stored specs this tab shows were written for, so the tab rebuilds when a new one lands.
+func _assets_signature(state: WorldState, t: int) -> String:
+	var keys: Array[String] = [AssetBook.key("heraldry", _tribe)]
+	for law: String in Society.laws_of(state, t):
+		keys.append(AssetBook.key("poster", "%s|%s" % [_tribe, law]))
+	for b: int in state.buildings_of(_tribe):
+		if state.building_types[b] in MonumentKind.TYPES:
+			keys.append(AssetBook.key("monument", str(state.building_ids[b])))
+	var parts := PackedStringArray()
+	for key: String in keys:
+		var entry: Dictionary = state.assets.get(key, {})
+		parts.append("%s@%s" % [entry.get("signature", ""), entry.get("tick", "")])
+	return ",".join(parts)
+
+
+## The banner of whoever holds power, and its motto.
+func _banner(state: WorldState) -> void:
+	var spec := AssetDirector.spec_or_offline(state, "heraldry", _tribe)
+	if spec.is_empty():
+		return
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", UiStyle.SPACE_3)
+	var picture := TextureRect.new()
+	picture.texture = EmblemArt.banner_texture(spec)
+	picture.custom_minimum_size = Vector2(40.0, 50.0)
+	picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	row.add_child(picture)
+	var words := VBoxContainer.new()
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.alignment = BoxContainer.ALIGNMENT_CENTER
+	words.add_child(UiStyle.quote("“%s”" % spec["motto"], UiStyle.LEAD))
+	var t := state.tribe_index(_tribe)
+	var holder := HeraldryKind.holder_of(state, t)
+	var whose := "The banner of the people"
+	if holder.begins_with("house "):
+		whose = "The banner of house %s" % state.tribe_dynasty[t]
+	elif holder.begins_with("ruler ") and state.chief_of(_tribe) != -1:
+		whose = "The banner of %s's rule" % state.person_names[state.chief_of(_tribe)]
+	words.add_child(UiStyle.faint(whose, UiStyle.SMALL))
+	row.add_child(words)
+	var source := AssetBook.source(state, "heraldry", _tribe)
+	row.tooltip_text = "Its banner shows a %s. %s" % [spec["charge"], "Drawn by the AI (%s)." % source if source and source != "offline" else "Drawn without AI."]
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	_body.add_child(row)
+
+
+## The slogans on the walls, one for every dark law in force.
+func _slogans(state: WorldState, t: int) -> void:
+	var lines: Array[Label] = []
+	for law: String in Society.laws_of(state, t):
+		if not Laws.is_dystopian(law):
+			continue
+		var spec := AssetDirector.spec_or_offline(state, "poster", "%s|%s" % [_tribe, law])
+		if spec.is_empty():
+			continue
+		var line := UiStyle.quote("“%s”" % spec["slogan"], 13)
+		line.tooltip_text = "Posted for %s." % Laws.name_of(law).to_lower()
+		line.mouse_filter = Control.MOUSE_FILTER_PASS
+		lines.append(line)
+	if lines.is_empty():
+		return
+	_body.add_child(UiStyle.section("ON THE WALLS"))
+	for line: Label in lines:
+		_body.add_child(line)
+
+
+## What is carved on the statues and over the temple doors.
+func _monuments(state: WorldState) -> void:
+	var lines: Array[Label] = []
+	for b: int in state.buildings_of(_tribe):
+		var type := state.building_types[b]
+		if type not in MonumentKind.TYPES or not state.is_built(b):
+			continue
+		var spec := AssetDirector.spec_or_offline(state, "monument", str(state.building_ids[b]))
+		if spec.is_empty():
+			continue
+		var what := "Statue" if type == "statue" else "Temple of the %s" % MonumentKind.ICON_NAMES.get(spec["iconography"], "Sky")
+		var line := UiStyle.label("%s:  “%s”" % [what, spec["inscription"]], 13, true)
+		line.tooltip_text = "Raised in year %d." % WorldState.year_of(state.building_done[b])
+		line.mouse_filter = Control.MOUSE_FILTER_PASS
+		lines.append(line)
+	if lines.is_empty():
+		return
+	_body.add_child(UiStyle.section("MONUMENTS"))
+	for line: Label in lines:
+		_body.add_child(line)

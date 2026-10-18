@@ -1,0 +1,10 @@
+{
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["pose", "inscription", "iconography"],
+	"properties": {
+		"pose": {"type": "string", "description": "How the statue stands (for a temple, any).", "enum": ["raised_fist", "sword", "pointing", "open_arms", "scroll", "staff"]},
+		"inscription": {"type": "string", "description": "The words carved on the plinth or over the temple door, at most 14 words.", "minLength": 3, "maxLength": 90},
+		"iconography": {"type": "string", "description": "The holy sign on the temple's front, or the sign on the statue's plinth.", "enum": ["sun", "moon", "star", "flame", "eye", "tree", "wave", "hand", "mountain"]}
+	}
+}

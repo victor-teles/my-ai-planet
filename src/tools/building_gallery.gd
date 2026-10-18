@@ -3,7 +3,7 @@ extends SceneTree
 ## under the game's dusk light, renders a few frames and saves one, so the art can be checked at a
 ## glance. Opens a window briefly.
 ## Usage: Godot --path Godot --resolution 1600x900 -s res://tools/building_gallery.gd --
-##   --out=/tmp/gallery.png [--show=buildings|people|walls|<building type>] [--age=4]
+##   --out=/tmp/gallery.png [--show=buildings|people|walls|heraldry|<building type>] [--age=4]
 ##   [--site] (a building site instead) [--look-height=1.0] [--yaw=0.5] [--pitch=-0.45] [--distance=16] [--frames=40]
 
 const SKY_SHADER := preload("res://art/shaders/sky_dusk.gdshader")
@@ -73,6 +73,9 @@ func _initialize() -> void:
 				var ring := BuildingArt.wall(["palisade", "stone_wall"][k], 2.68, TINT)
 				ring.position.x = k * 6.0 - 3.0
 				world.add_child(ring)
+		"heraldry":
+			_heraldry(world)
+			center = Vector3(0.0, 0.45, 0.0)
 		_:
 			var site := _options.has("site")
 			var model := BuildingArt.building_site(show) if site else BuildingArt.make(show, TINT, age)
@@ -87,6 +90,41 @@ func _initialize() -> void:
 	var distance := float(_options.get("distance", 16.0))
 	camera.position = center + Vector3(sin(yaw) * cos(pitch), -sin(pitch), cos(yaw) * cos(pitch)) * distance
 	camera.look_at_from_position(camera.position, center)
+
+
+## The AI-authored look of a tribe, written offline: banners at the back, a statue in every pose
+## and a temple with its holy sign in the middle, propaganda posters in front.
+func _heraldry(world: Node3D) -> void:
+	var heraldry := HeraldryKind.new()
+	var cultures: Array[Dictionary] = [
+		{"piety": 60}, {"martial": 70, "hierarchy": 40}, {"openness": 60, "hierarchy": -50},
+		{"hierarchy": 70, "piety": 30}, {"openness": -60}, {"martial": -40, "piety": -30},
+	]
+	var governments: Array[String] = ["Theocracy", "Military Junta", "Democracy", "Kingdom", "Total State", "Merchant Council"]
+	for k: int in 6:
+		var facts := {"tribe": "Kolu", "government": governments[k], "culture": cultures[k], "dystopia": 60 if k == 4 else 10, "island": "meadow"}
+		var banner := Settlement.make_banner(heraldry.accept(heraldry.offline(facts, k * 7919 + 5), facts))
+		banner.position = Vector3(k * 0.7 - 1.75, 0.0, 0.1)
+		world.add_child(banner)
+	for k: int in MonumentKind.POSES.size():
+		var statue := BuildingArt.make("statue", TINT, 4)
+		var figure := statue.get_node("Figure")
+		statue.remove_child(figure)
+		figure.free()
+		statue.add_child(BuildingArt.statue_figure(MonumentKind.POSES[k]))
+		statue.position = Vector3(k * 0.62 - 2.2, 0.0, -1.3)
+		world.add_child(statue)
+	var temple := BuildingArt.make("temple", TINT, 4)
+	temple.add_child(Settlement.make_temple_sign("flame"))
+	temple.position = Vector3(1.9, 0.0, -1.3)
+	world.add_child(temple)
+	var poster := PosterKind.new()
+	var laws: Array[String] = ["surveillance_net", "secret_police", "factory_discipline", "state_religion", "social_credit", "broadcast_propaganda"]
+	for k: int in laws.size():
+		var facts := {"tribe": "Kolu", "law": laws[k], "government": "Total State", "ruler": "Asha"}
+		var board := Settlement.make_poster(poster.accept(poster.offline(facts, k * 31 + 2), facts))
+		board.position = Vector3(k * 0.5 - 1.25, 0.0, 1.1)
+		world.add_child(board)
 
 
 func _process(_delta: float) -> bool:

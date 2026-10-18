@@ -190,6 +190,9 @@ func test_pacing_hint_reaches_the_prompts() -> void:
 	var oracle := Oracle.new(fake, AICache.new())
 	oracle.budget = AIBudget.new()
 	var session := Session.new(Simulation.create(42), oracle)
+	# Only the story's calls here: this fake answers everything with a prophecy, so asset specs
+	# (asked for as the session begins) would fail and trip its circuit breaker first.
+	session.assets.kinds = []
 	await session.begin()
 	assert_eq(fake.last_request.task, "prophecy")
 	assert_true(fake.last_request.system.contains("The story's pacing: %s." % session.drama.pacing_hint()), "the drama's hint is in the prophecy prompt")

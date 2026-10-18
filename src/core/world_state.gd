@@ -933,6 +933,17 @@ func summarize(recent_event_count: int = 12) -> Dictionary:
 		var leader := chief_of(tribe_names[i])
 		if leader != -1:
 			tribes[-1]["chief"] = {"name": person_names[leader], "age": People.age(self, leader), "traits": Array(People.traits_of(self, leader))}
+		# The words on their banner and walls, once written, so the Oracle can quote them.
+		var motto := String(AssetBook.spec(self, "heraldry", tribe_names[i]).get("motto", ""))
+		if motto:
+			tribes[-1]["motto"] = motto
+		var slogans: Array[String] = []
+		for law: String in Society.laws_of(self, i):
+			var slogan := String(AssetBook.spec(self, "poster", "%s|%s" % [tribe_names[i], law]).get("slogan", ""))
+			if slogan:
+				slogans.append(slogan)
+		if not slogans.is_empty():
+			tribes[-1]["slogans"] = slogans.slice(maxi(slogans.size() - 3, 0))
 	var water: Array[Dictionary] = []
 	for w: int in water_names.size():
 		water.append({"name": water_names[w], "fullness": snappedf(water_level[w], 0.01), "drinkers": drinkers(w)})
