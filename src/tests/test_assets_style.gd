@@ -128,6 +128,7 @@ func test_an_ai_style_goes_through_the_director_into_the_save() -> void:
 	var oracle := Oracle.new(fake, AICache.new())
 	oracle.budget = AIBudget.new()
 	var director := AssetDirector.new(oracle)
+	director.kinds.assign([AssetKinds.find("style")]) # the fake only writes styles
 	await director.settle(state)
 	var tribe := state.tribe_names[0]
 	assert_eq(AssetBook.source(state, "style", tribe), "fake", "the AI's style is stored")

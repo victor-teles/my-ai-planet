@@ -105,3 +105,15 @@ func test_spec_or_offline_never_waits() -> void:
 	assert_eq(AssetDirector.spec_or_offline(state, "no_such_kind", "x"), {})
 	AssetBook.put(state, "thought", "x", {"words": "stored"}, "first", "fake")
 	assert_eq(AssetDirector.spec_or_offline(state, "thought", "x"), {"words": "stored"})
+
+
+func test_bad_asset_replies_never_send_the_story_offline() -> void:
+	var state := WorldState.create(42, 3)
+	var kind := AssetKinds.find("style")
+	var fake := FakeProvider.new({"not": "a style"})
+	var oracle := Oracle.new(fake, AICache.new())
+	for tribe: String in state.tribe_names:
+		await oracle.request_asset(kind, state, tribe)
+	assert_true(fake.calls >= 3, "every tribe asked")
+	assert_true(oracle.breaker.allows(fake.get_id()), "rejected specs don't open the breaker")
+	assert_true(not oracle.offline_for("prophecy"), "prophecies still go to the provider")

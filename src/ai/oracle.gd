@@ -292,7 +292,10 @@ func _ask_provider(ai: AIProvider, request: AIRequest, accept: Callable, on_text
 			breaker.success(id)
 			cache.store(key, response.data)
 			return result
-		breaker.failure(id)
+		# A rejected asset spec says little about the provider: only its outages may trip the breaker
+		# that would send the story offline.
+		if not response.ok or AssetKinds.find(request.task) == null:
+			breaker.failure(id)
 		meter.record_failure(id, request.task)
 		usage_changed.emit()
 	return null
