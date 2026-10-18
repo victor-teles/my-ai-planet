@@ -6,8 +6,9 @@ extends RefCounted
 ## mix of their parents; their id picks the rest (face, beard, hair style); age and sex come from
 ## the simulation, and children grow a little every year.
 ## Walking plays a retargeted walk clip, sped up or slowed so one cycle covers the distance
-## the villager actually moved. Idle and run stay in the library. Sitting and chopping play
-## their own clips; other work still stoops and swings by bending bones (see set_tool, set_work).
+## the villager actually moved. Idle and run stay in the library. Sitting, kneeling, farming
+## and chopping play their own clips; other work still stoops and swings by bending bones
+## (see set_tool, set_work).
 
 const MODEL := preload("res://art/characters/kenney/characterMedium.fbx")
 const IDLE_SOURCE := preload("res://art/characters/kenney/idle.fbx")
@@ -502,16 +503,24 @@ static func set_carry(villager: Node3D, what: String) -> void:
 	villager.add_child(model)
 
 
-## Working motion. stoop and swing still bend the spine and the right arm when no clip fits
-## (gathering, farming, a scholar's lean). A swing above zero latches the chop clip until both
-## amounts return to zero, so a woodcutter's downbeat does not snap back to idle. action "sit"
-## plays the ground-sit clip. Pass "" to leave the choice to stoop and swing.
+## Working motion. stoop and swing still bend the spine and the right arm when no clip fits.
+## A swing above zero latches the chop clip until both amounts return to zero, so a woodcutter's
+## downbeat does not snap back to idle. "sit", "kneel", and "farm" play those clips and clear
+## the latch. Pass "" to leave the choice to stoop and swing.
 static func set_work(villager: Node3D, stoop: float, swing: float = 0.0, action: String = "") -> void:
 	var pose := villager.get_meta("pose") as VillagerPose
 	var tree := villager.get_node("Model/AnimationTree") as AnimationTree
 	if action == "sit":
 		villager.set_meta("chopping", false)
 		tree.set("parameters/work_kind/blend_amount", 0.0)
+		tree.set("parameters/action/blend_amount", 1.0)
+		_work_bend(pose, 0.0, 0.0)
+		return
+	if action == "kneel" or action == "farm":
+		villager.set_meta("chopping", false)
+		tree.set("parameters/work_kind/blend_amount", 1.0)
+		tree.set("parameters/labor/blend_amount", 1.0)
+		tree.set("parameters/ground/blend_amount", 0.0 if action == "kneel" else 1.0)
 		tree.set("parameters/action/blend_amount", 1.0)
 		_work_bend(pose, 0.0, 0.0)
 		return
@@ -523,10 +532,13 @@ static func set_work(villager: Node3D, stoop: float, swing: float = 0.0, action:
 	villager.set_meta("chopping", chopping)
 	if chopping:
 		tree.set("parameters/work_kind/blend_amount", 1.0)
+		tree.set("parameters/labor/blend_amount", 0.0)
 		tree.set("parameters/action/blend_amount", 1.0)
 		_work_bend(pose, 0.0, 0.0)
 	else:
 		tree.set("parameters/action/blend_amount", 0.0)
+		tree.set("parameters/labor/blend_amount", 0.0)
+		tree.set("parameters/ground/blend_amount", 0.0)
 		_work_bend(pose, stoop, swing)
 
 
@@ -728,15 +740,27 @@ static func _animations() -> AnimationLibrary:
 	var walk_player := _animation_player(walk_scene)
 	var baked_walk := _retarget(walk_skeleton, kenney_skeleton, walk_player.get_animation("Walk"), names, bone_path)
 	var baked_sit := _retarget(walk_skeleton, kenney_skeleton, walk_player.get_animation("Sitting_Idle"), names, bone_path)
+	var kneel_src := _source_clip(walk_player, "Fixing_Kneeling")
+	var baked_kneel: Animation
+	if kneel_src:
+		baked_kneel = _retarget(walk_skeleton, kenney_skeleton, kneel_src, names, bone_path)
 	walk_scene.free()
 	var chop_scene := CHOP_SOURCE.instantiate()
 	var chop_skeleton := chop_scene.find_child("Skeleton3D", true, false) as Skeleton3D
 	var chop_player := _animation_player(chop_scene)
 	var baked_chop := _retarget(chop_skeleton, kenney_skeleton, chop_player.get_animation("TreeChopping"), names, bone_path)
+	var farm_src := _source_clip(chop_player, "Farm_PlantSeed")
+	var baked_farm: Animation
+	if farm_src:
+		baked_farm = _retarget(chop_skeleton, kenney_skeleton, farm_src, names, bone_path)
 	chop_scene.free()
 	library.add_animation("walk", baked_walk)
 	library.add_animation("sit", baked_sit)
 	library.add_animation("chop", baked_chop)
+	if baked_kneel:
+		library.add_animation("kneel", baked_kneel)
+	if baked_farm:
+		library.add_animation("farm", baked_farm)
 	_walk_length = baked_walk.length
 	_walk_stride = _measure_stride(kenney_skeleton, baked_walk)
 	kenney.free()
@@ -759,6 +783,17 @@ static func _humanoid_names() -> Dictionary:
 
 static func _animation_player(scene: Node) -> AnimationPlayer:
 	return scene.find_children("*", "AnimationPlayer", true, false)[0] as AnimationPlayer
+
+
+## Import drops a trailing _Loop. Try the bare name, then the name still on the file.
+static func _source_clip(player: AnimationPlayer, clip_name: String) -> Animation:
+	if player.has_animation(clip_name):
+		return player.get_animation(clip_name)
+	var looped := clip_name + "_Loop"
+	if player.has_animation(looped):
+		return player.get_animation(looped)
+	push_error("VillagerArt missing %s; player animations: %s" % [clip_name, player.get_animation_list()])
+	return null
 
 
 ## Copies one Quaternius clip onto Kenney bone names and Kenney rest axes. Rotations follow
@@ -908,19 +943,31 @@ static func _blend_tree() -> AnimationNodeBlendTree:
 		sit.animation = "sit"
 		var chop := AnimationNodeAnimation.new()
 		chop.animation = "chop"
+		var kneel := AnimationNodeAnimation.new()
+		kneel.animation = "kneel"
+		var farm := AnimationNodeAnimation.new()
+		farm.animation = "farm"
 		_tree.add_node("idle", idle)
 		_tree.add_node("walk_clip", walk_clip)
 		_tree.add_node("sit", sit)
 		_tree.add_node("chop", chop)
+		_tree.add_node("kneel", kneel)
+		_tree.add_node("farm", farm)
 		_tree.add_node("pace", AnimationNodeTimeScale.new())
 		_tree.add_node("walk", AnimationNodeBlend2.new())
+		_tree.add_node("ground", AnimationNodeBlend2.new())
+		_tree.add_node("labor", AnimationNodeBlend2.new())
 		_tree.add_node("work_kind", AnimationNodeBlend2.new())
 		_tree.add_node("action", AnimationNodeBlend2.new())
 		_tree.connect_node("pace", 0, "walk_clip")
 		_tree.connect_node("walk", 0, "idle")
 		_tree.connect_node("walk", 1, "pace")
+		_tree.connect_node("ground", 0, "kneel")
+		_tree.connect_node("ground", 1, "farm")
+		_tree.connect_node("labor", 0, "chop")
+		_tree.connect_node("labor", 1, "ground")
 		_tree.connect_node("work_kind", 0, "sit")
-		_tree.connect_node("work_kind", 1, "chop")
+		_tree.connect_node("work_kind", 1, "labor")
 		_tree.connect_node("action", 0, "walk")
 		_tree.connect_node("action", 1, "work_kind")
 		_tree.connect_node("output", 0, "action")

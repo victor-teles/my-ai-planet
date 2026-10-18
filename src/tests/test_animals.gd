@@ -162,8 +162,8 @@ func test_forced_hunt_above_the_cap_kills_more_than_sustainable_work() -> void:
 		assert_true(int(after.get(species_id, 0)) > 0, "%s hit 0 under the cap: %s" % [species_id, str(after)])
 
 
-## Seed 42, year 5. Food eaten is a lower bound: the stock at each dawn, before that day's gathering.
-## Counts are filled in from the run.
+## Seed 42, year 5: pop 0, prey 35 (horse 15, goat 20), food eaten at least 11659.2, none wiped.
+## Food eaten is a lower bound: the stock at each dawn, before that day's gathering.
 func test_seed_42_year_5_still_has_prey_and_food() -> void:
 	var sim := Simulation.create(42)
 	var eaten := 0.0

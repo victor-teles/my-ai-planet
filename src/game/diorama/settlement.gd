@@ -588,8 +588,10 @@ func _step(walker: Walker, delta: float, time: float, neighbors: Array, obstacle
 		walker.work_phase += delta
 		if walker.job in SWING_JOBS:
 			VillagerArt.set_work(node, 0.15, maxf(sin(walker.work_phase * 5.0), 0.0))
-		elif walker.job in ["forager", "farmer", "healer"]:
-			VillagerArt.set_work(node, 0.9 + 0.25 * sin(walker.work_phase * 2.0))
+		elif walker.job in ["forager", "healer"]:
+			VillagerArt.set_work(node, 0.0, 0.0, "kneel")
+		elif walker.job == "farmer":
+			VillagerArt.set_work(node, 0.0, 0.0, "farm")
 		elif walker.job == "guard":
 			VillagerArt.set_work(node, 0.0)
 		elif walker.job in ["scholar", "official"]:

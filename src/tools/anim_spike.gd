@@ -1,5 +1,5 @@
 extends SceneTree
-## Close-ups of the retargeted walk, sit and chop on four Kenney villagers.
+## Close-ups of the retargeted walk, sit, chop, kneel and farm on four Kenney villagers.
 ## Usage: godot --path src --resolution 1000x1200 -s res://tools/anim_spike.gd -- --out=<dir>
 
 const SKY_SHADER := preload("res://art/shaders/sky_dusk.gdshader")
@@ -56,7 +56,7 @@ func _adult(id: int, female: bool, age: int, build: String, tunic: Color) -> Dic
 
 
 func _queue(who: String, looks: Dictionary) -> void:
-	for action: String in ["walk", "sit", "chop"]:
+	for action: String in ["walk", "sit", "chop", "kneel", "farm"]:
 		_shots.append({"who": who, "action": action, "looks": looks})
 
 
@@ -120,6 +120,12 @@ func _show(shot: Dictionary) -> void:
 	elif action == "sit":
 		VillagerArt.set_walking(villager, 0.0)
 		VillagerArt.set_work(villager, 0.0, 0.0, "sit")
+	elif action == "kneel":
+		VillagerArt.set_walking(villager, 0.0)
+		VillagerArt.set_work(villager, 0.0, 0.0, "kneel")
+	elif action == "farm":
+		VillagerArt.set_walking(villager, 0.0)
+		VillagerArt.set_work(villager, 0.0, 0.0, "farm")
 	else:
 		VillagerArt.set_walking(villager, 0.0)
 		VillagerArt.set_tool(villager, "axe")
