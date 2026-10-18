@@ -49,7 +49,7 @@ An LLM must **not** run the simulation tick by tick. That would be slow, expensi
 **The golden rule:** the AI only ever returns **structured proposals** (`{event, targets, effects: [{stat, delta}], text}`). The Simulation Core checks every proposal against the rules, clamps the numbers, and then applies it. The AI writes the story; the simulation owns the facts.
 
 ```
-Godot/
+src/
   core/           # pure simulation, no rendering (testable headless)
     world_state.gd, tick_scheduler.gd, rng.gd
     systems/      # climate, biology, population, economy, culture, conflict
@@ -246,21 +246,25 @@ sim facts ──► AI writes a spec ──► validate & clamp ──► engine
  laws, dystopia)                       SVG subset)         banner textures)    offline)
 ```
 
-- [ ] **Asset Director** (`ai/asset_director.gd`): asks for a spec when a tribe is founded and whenever it enters a new age, changes government or meets its destiny; prefetched while the player plays; one small-model call each (20 to 40 per run)
-- [ ] Specs are saved in `WorldState`, so a world looks the same after a reload and with the AI unplugged; every spec has a seeded offline generator with the same schema, so offline worlds vary too
-- [ ] The AI never picks raw colors or geometry: it picks art-bible palette indices and modules from a grammar, and the builder clamps sizes and part counts
-- [ ] **Architectural style per tribe and age**: a grammar of roofs (cone, gable, dome, stepped, flat), walls, ornament, towers and proportions, fed to `BuildingArt`. The village shows the society: a Theocracy grows spires, a Total State goes grey and brutalist, a Free Commons stays colorful
-- [ ] **Heraldry**: a banner emblem and motto per ruling house, as SVG from a whitelisted subset (basic shapes and paths, palette colors only, no external references), rasterized with `Image.load_svg_from_string`. Revolutions and coups replace the banner
-- [ ] **Propaganda posters and slogans** that go up as dystopian laws pass, on walls, broadcast towers and surveillance masts; the Oracle can quote them
-- [ ] **Fashion by culture and class**: clothing palettes, patterns and accessories for the villager skins; finer for nobles, drab for the bonded, uniforms for guards under a junta
-- [ ] **A people's own language**: a phonology per founding people that feeds `NameGen`, with dialects drifting when tribes split
-- [ ] **Laws and places in their own words**: local names for laws and buildings in the feed and panels ("The Watchful Eye of Kolu" for the surveillance network); the sim keeps the ids
-- [ ] **Monuments**: statue pose presets, plinth inscriptions and temple iconography from rulers' vanity and prophets' doctrines
+- [x] **Asset Director** (`ai/asset_director.gd`): asks for a spec when a tribe is founded and whenever it enters a new age, changes government or ruling house, or meets its destiny (each kind's *signature* changes); written in the background while the player plays, one small-model call each; asset calls may spend at most a tenth of the session budget (20 of the default 200 calls), after which the offline writers answer
+- [x] Specs are saved in `WorldState.assets` (`core/asset_book.gd`), so a world looks the same after a reload and with the AI unplugged; every kind (`ai/assets/*_kind.gd`) has a seeded offline writer with the same schema, so offline worlds vary too; views read `AssetDirector.spec_or_offline()`, so nothing waits on the AI
+- [x] The AI never picks raw colors or geometry: it picks art-bible palette indices (`core/art_palette.gd`) and modules from a grammar, and each kind clamps sizes and part counts; a rejected asset reply falls back offline without tripping the provider's circuit breaker
+- [x] **Architectural style per tribe and age** (`style_kind.gd`, `game/diorama/styled_buildings.gd`): roofs (cone, gable, dome, stepped, flat, spire), wall materials no newer than the age, ornament, towers and proportions on homes, temple, great house, school and market. A Theocracy grows spires, a Total State goes grey and brutalist, a Free Commons stays colorful (`docs/screenshots/m35-styles.png`)
+- [x] **Heraldry** (`heraldry_kind.gd`): a banner emblem, field and motto per ruling house, as SVG cleaned by `ai/svg_guard.gd` (whitelisted shapes, palette tokens only, no text, styles, links or entities; re-written from scratch) and rasterized with `Image.load_svg_from_string`; offline emblems from a grammar of 14 charges. Coups, revolutions and new houses replace the banner (`docs/screenshots/m35-heraldry.png`)
+- [x] **Propaganda posters and slogans** (`poster_kind.gd`): one per dark law in force, on boards by the masts, towers, walls and fire; the Oracle sees the latest slogans and the motto in its world summary
+- [x] **Fashion by culture and class**: colors per class, a woven pattern and an accessory (`VillagerArt.wear`); finer for nobles, drab for the bonded, uniforms for guards under a junta
+- [x] **A people's own language** (`core/language.gd`): a phonology per founding people feeds `NameGen` (people, families, tribes, the island and its springs); dialects drift when tribes split; an AI-written language names everyone born after it
+- [x] **Laws and places in their own words** (`names_kind.gd`, `LocalNames`): local names for laws and buildings in the feed and the tribe panel ("Watchful Eye of Piapusux" for the surveillance network); the sim keeps the ids
+- [x] **Monuments** (`monument_kind.gd`): six statue poses from the ruler's vanity, plinth inscriptions, temple signs from prophets' doctrines
+- [ ] Monuments: draw the plinth inscription on the statue (it shows in the tribe panel only); the pop-up text over the villages still uses the usual law and building names
+- [ ] The buildings of control (barracks, prison, masts), tents, the healer's hut and the storehouse don't take the style yet
 - [ ] Later, with M5: the illustrated "Book of Your Planet", laid out by the AI around screenshots, heraldry and chronicles
 
 Not planned: image-model textures (they break style coherence and add licensing and disclosure questions; maybe as an opt-in extra), AI-written raw meshes (a module grammar gives creative control without wrecking the art bible), and 3D-generation services (slow, costly per asset, and off-style).
 
 **Exit:** two runs on the same island seed with different providers, and one offline, all look coherent with the art bible, and their tribes, regimes and endings are visibly different from each other. Asset calls cost under a tenth of a session's AI budget, and a failed call never leaves a building unbuilt.
+
+**Status:** `tests/test_assets_exit.gd` plays seed 42 for 60 years with two stand-in AIs and offline: every tribe gets its style, banner and names in all three, the two AIs' looks differ, asset calls stay within a tenth of the budget (20 AI-written specs, then 12 offline), and the looks never change the sim. Still to do: the same check with real providers (a cloud key, a local model and Claude Code), and a look at whether 20 asset calls are enough for a long run (later ages fall back to the offline writers once they are spent).
 
 ### M4 — Scale Up: Eras 2 & 4 (8–10 weeks)
 - [ ] Era 4 Kingdoms: cities that grow building by building, trade routes, rulers with AI personalities, wars

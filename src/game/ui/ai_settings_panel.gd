@@ -26,6 +26,8 @@ const URL_IDS: Array[String] = ["openai", "openrouter", "gemini", "ollama", "lms
 const TASK_NAMES := {
 	"thought": "thoughts", "dilemma": "dilemma cards", "prophecy": "prophecies",
 	"chronicle": "chronicles", "destiny": "the last chapter",
+	"style": "building styles", "heraldry": "banners", "poster": "posters", "monument": "monuments",
+	"language": "languages", "names": "local names",
 }
 const USAGE_COLUMNS: Array[String] = ["", "Calls", "Failed", "Cached", "Tokens in", "Tokens out", "Cost", "Avg time"]
 const GOOD := Color(0.20, 0.45, 0.22)

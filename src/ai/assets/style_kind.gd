@@ -111,7 +111,7 @@ func signature(state: WorldState, subject: String) -> String:
 	var t := state.tribe_index(subject)
 	if t == -1:
 		return ""
-	return "age %d|%s|%s" % [state.age_of(t), _government(state, t), _destiny(state, subject)]
+	return "age %d|%s|%s" % [state.age_of(t), government_of(state, t), _destiny(state, subject)]
 
 
 func context(state: WorldState, subject: String) -> Dictionary:
@@ -137,7 +137,7 @@ func context(state: WorldState, subject: String) -> Dictionary:
 		"island": String(state.world.get("biome", "meadow")),
 		"age": Knowledge.age_name(age),
 		"age_level": age,
-		"government": _government(state, t),
+		"government": government_of(state, t),
 		"strongest_faction": Society.FACTION_NAMES[Society.top_faction(state, t)],
 		"culture": culture,
 		"laws": laws,
@@ -323,9 +323,9 @@ static func _pick(rng: RandomNumberGenerator, from: Array) -> Variant:
 	return from[rng.randi_range(0, from.size() - 1)]
 
 
-## The government a style is written for. The leaderless "Band of equals" and "Free tribe" are
-## one look, so a village that grows past 30 people doesn't ask for a new one.
-static func _government(state: WorldState, t: int) -> String:
+## The government a style (or a tribe's local names) is written for. The leaderless "Band of
+## equals" and "Free tribe" are one look, so a village that grows past 30 people doesn't ask again.
+static func government_of(state: WorldState, t: int) -> String:
 	var government := Society.government(state, t)
 	return "Free tribe" if government == "Band of equals" else government
 

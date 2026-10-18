@@ -90,7 +90,7 @@ func subjects(state: WorldState) -> Array[String]:
 
 func signature(state: WorldState, subject: String) -> String:
 	var t := state.tribe_index(subject)
-	return "" if t == -1 else "age %d|%s" % [state.age_of(t), Society.government(state, t)]
+	return "" if t == -1 else "age %d|%s" % [state.age_of(t), StyleKind.government_of(state, t)]
 
 
 ## The tribe's words, its laws in force and those its age may bring, and the places it has or
