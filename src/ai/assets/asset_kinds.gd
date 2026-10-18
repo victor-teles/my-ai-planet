@@ -16,12 +16,13 @@ static func all() -> Array[AssetKind]:
 		for script: Script in SCRIPTS:
 			_all.append(script.new() as AssetKind)
 		_all.sort_custom(func(a: AssetKind, b: AssetKind) -> bool: return a.priority() < b.priority())
-	return _all
+	return _all.duplicate() # a copy: callers may narrow their own list (tests do)
 
 
 ## The kind whose task this is, or null.
 static func find(task: String) -> AssetKind:
-	for kind: AssetKind in all():
+	all()
+	for kind: AssetKind in _all:
 		if kind.task() == task:
 			return kind
 	return null
