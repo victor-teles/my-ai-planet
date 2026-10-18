@@ -109,10 +109,10 @@ The M2.5 balance pass, the automated half (playtesters come later). Two headless
 ```sh
 # The long arc: 18 islands (every biome, 1 to 3 founding peoples) for 400 years, under five bot gods.
 # One Godot process per run, 6 at a time; rows land in the folder and are merged at the end.
-Godot/tools/society_report.sh /tmp/arc years=400 gods=none,benevolent,wrathful,meddler,kingmaker jobs=6
-# Or in one process (slow): godot --headless --path Godot -s res://tools/society_report.gd -- seeds=1-6 years=300 gods=none
+src/tools/society_report.sh /tmp/arc years=400 gods=none,benevolent,wrathful,meddler,kingmaker jobs=6
+# Or in one process (slow): godot --headless --path src -s res://tools/society_report.gd -- seeds=1-6 years=300 gods=none
 # The First Fires century (M2): 6 islands, 100 years, a kind bot.
-godot --headless --path Godot -s res://tools/balance_report.gd [-- seeds=12]
+godot --headless --path src -s res://tools/balance_report.gd [-- seeds=12]
 ```
 
 A 400-year run takes 3 to 5 minutes (people meeting every day is most of the time), so the full five-god report is 90 runs and about an hour and a half on 8 cores. A run stops when the island meets its destiny. Set `GODOT_LOCK=/some/dir` to have the script take a `mkdir` lock around each batch when other processes share the import cache.

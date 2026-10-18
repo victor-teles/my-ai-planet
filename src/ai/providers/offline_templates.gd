@@ -28,6 +28,9 @@ func complete(request: AIRequest) -> AIResponse:
 			return AIResponse.success(get_id(), _destiny(request))
 		"thought":
 			return AIResponse.success(get_id(), {"thought": thought(request)})
+	var kind := AssetKinds.find(request.task)
+	if kind:
+		return AIResponse.success(get_id(), kind.offline(request.context, request.seed_value))
 	return AIResponse.failure(get_id(), "Offline templates don't cover task '%s'" % request.task)
 
 

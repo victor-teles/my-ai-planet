@@ -5,5 +5,5 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 GODOT="${GODOT_PATH:-$(command -v godot || echo /Applications/Godot.app/Contents/MacOS/Godot)}"
 # Importing builds the class_name cache that a fresh checkout doesn't have yet.
-"$GODOT" --headless --path Godot --import >/dev/null 2>&1 || true
-"$GODOT" --headless --path Godot -s res://tests/run_tests.gd -- "${1:-}"
+"$GODOT" --headless --path src --import >/dev/null 2>&1 || true
+"$GODOT" --headless --path src -s res://tests/run_tests.gd -- "${1:-}"

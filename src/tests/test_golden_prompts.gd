@@ -33,6 +33,11 @@ func _requests(oracle: Oracle, state: WorldState) -> Array[Array]:
 	]
 	for c: int in _people(state):
 		requests.append(["thought of %s" % state.person_names[c], oracle.thought_request(state, c)])
+	# Every asset kind, for its first and last subject (a founding tribe and the newest).
+	for kind: AssetKind in AssetKinds.all():
+		var subjects := kind.subjects(state)
+		for subject: String in ([subjects[0], subjects[-1]] if subjects.size() > 1 else subjects):
+			requests.append(["%s of %s" % [kind.task(), subject], oracle.asset_request(kind, state, subject)])
 	return requests
 
 
@@ -94,6 +99,9 @@ func _check_offline_reply(label: String, request: AIRequest) -> void:
 	assert_true(response.ok, "%s: offline answers" % label)
 	assert_eq(JsonSchema.validate(response.data, request.schema), PackedStringArray(), "%s: offline reply fits the schema" % label)
 	assert_eq(ContentGuard.check(response.data, true), PackedStringArray(), "%s: offline reply is within even the gentle ceiling" % label)
+	var kind := AssetKinds.find(request.task)
+	if kind:
+		assert_true(kind.accept(response.data, request.context) != null, "%s: the offline spec is accepted as it is" % label)
 
 
 ## First, so the other tests read the fresh files.
@@ -163,6 +171,9 @@ func test_the_sim_accepts_offline_answers_from_every_saved_state() -> void:
 			assert_true(not (await oracle.request_destiny(_with_destiny(state))).is_empty(), label + ": destiny")
 			for c: int in _people(state):
 				assert_true(not (await oracle.request_thought(state, c)).is_empty(), label + ": thought")
+			for kind: AssetKind in AssetKinds.all():
+				for subject: String in kind.subjects(state):
+					assert_true(not (await oracle.request_asset(kind, state, subject)).is_empty(), "%s: %s of %s" % [label, kind.task(), subject])
 			assert_eq(int(oracle.usage()["total"]["failures"]), 0, label + ": nothing was rejected")
 
 

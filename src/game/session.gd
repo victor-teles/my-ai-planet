@@ -33,6 +33,8 @@ var writing_destiny := false
 var dilemma: Dilemma
 ## Paces the story: tension, its target and when the next card is due.
 var drama := DramaManager.new()
+## Writes the world's styles, banners, posters and names in the background (AI or offline).
+var assets: AssetDirector
 
 var _fetching_dilemma := false
 var _ready_dilemma: Dilemma
@@ -41,11 +43,13 @@ var _ready_dilemma: Dilemma
 func _init(simulation: Simulation, ai_oracle: Oracle) -> void:
 	sim = simulation
 	oracle = ai_oracle
+	assets = AssetDirector.new(oracle)
 
 
 ## Starts (or restarts) the loop by asking for a prophecy.
 func begin() -> void:
 	drama.begin(sim.state.tick, sim.state.next_event_id - 1)
+	assets.observe(sim.state)
 	_set_phase(Phase.FORETELLING)
 	var prophecy: Prophecy = await oracle.request_prophecy(sim.state, drama.pacing_hint())
 	sim.state.prophecy = prophecy
@@ -59,6 +63,7 @@ func advance(ticks: int) -> int:
 		sim.advance()
 		ran += 1
 		drama.observe(sim.state)
+		assets.observe(sim.state)
 		if not sim.state.destiny.is_empty() and not sim.state.destiny.has("told"):
 			_last_chapter()
 		elif sim.state.prophecy == null and sim.state.resolved_prophecy != null:

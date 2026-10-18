@@ -4,7 +4,7 @@ A hand-drawn 2.5D life simulation. You nurture a tiny planet from its first cell
 
 ## Run
 
-Open `Godot/` in Godot 4.7, then press Play. The Oracle makes a prophecy, you nudge the world with miracles, and a chronicle tells you how it turned out.
+Open `src/` in Godot 4.7, then press Play. The Oracle makes a prophecy, you nudge the world with miracles, and a chronicle tells you how it turned out.
 
 Underneath, every person is simulated, one day at a time (see [docs/LIFE_SIM.md](docs/LIFE_SIM.md)):
 
@@ -58,11 +58,11 @@ MYAIPLANET_LIVE_AI=1 scripts/test.sh live_ai # real AI calls (costs money)
 Balance report (6 seeds, 100 years, offline AI, a bot that plays kindly), and a year-by-year report of one world:
 
 ```sh
-godot --headless --path Godot -s res://tools/balance_report.gd -- years=100 seeds=6
-godot --headless --path Godot -s res://tools/life_report.gd -- seed=42 years=80 every=5
+godot --headless --path src -s res://tools/balance_report.gd -- years=100 seeds=6
+godot --headless --path src -s res://tools/life_report.gd -- seed=42 years=80 every=5
 ```
 
-The brush-stroke texture and the villager skins are painted by scripts: `tools/paint_textures.gd` and `tools/paint_villager_skins.gd` (run with `godot --headless --path Godot -s res://tools/<name>.gd`).
+The brush-stroke texture and the villager skins are painted by scripts: `tools/paint_textures.gd` and `tools/paint_villager_skins.gd` (run with `godot --headless --path src -s res://tools/<name>.gd`).
 
 Art built on CC0 assets by Kenney: [Animated Characters](https://kenney.nl/assets/animated-characters-protagonists) and [Survivors](https://kenney.nl/assets/animated-characters-survivors) for the villagers, [Nature Kit](https://kenney.nl/assets/nature-kit) and [Survival Kit](https://kenney.nl/assets/survival-kit) for the props, tools, fences and workshop.
 

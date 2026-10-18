@@ -2,7 +2,7 @@
 # Runs tools/society_report.gd in parallel, one Godot process per (god, seed), then prints the merged
 # summary. Rows land in OUT_DIR/<god>_<seed>.txt; rows already there (from earlier batches) are
 # merged too, so a long report can be run a batch at a time.
-#   Godot/tools/society_report.sh OUT_DIR [seeds=1,2,5-style list, a-b range or a count; default the 18 balance
+#   src/tools/society_report.sh OUT_DIR [seeds=1,2,5-style list, a-b range or a count; default the 18 balance
 #   islands] [years=360] [gods=none,benevolent,wrathful,meddler] [jobs=6]
 # Set GODOT_LOCK=/some/dir to take a mkdir lock around the whole batch (shared import cache).
 set -uo pipefail
@@ -33,5 +33,5 @@ for god in ${GODS//,/ }; do
 	for seed in $LIST; do
 		echo "$god $seed"
 	done
-done | xargs -P "$JOBS" -n 2 sh -c '"$0" --headless --path Godot -s res://tools/society_report.gd -- seeds="$2-$2" years='"$YEARS"' gods="$1" after='"$AFTER"' rows=0 > "'"$OUT"'/$1_$2.txt" 2>&1' "$GODOT"
-"$GODOT" --headless --path Godot -s res://tools/society_report.gd -- merge="$OUT" 2>&1 | grep -v "^Godot Engine"
+done | xargs -P "$JOBS" -n 2 sh -c '"$0" --headless --path src -s res://tools/society_report.gd -- seeds="$2-$2" years='"$YEARS"' gods="$1" after='"$AFTER"' rows=0 > "'"$OUT"'/$1_$2.txt" 2>&1' "$GODOT"
+"$GODOT" --headless --path src -s res://tools/society_report.gd -- merge="$OUT" 2>&1 | grep -v "^Godot Engine"

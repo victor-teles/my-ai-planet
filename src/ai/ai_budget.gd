@@ -12,6 +12,9 @@ var cap_usd: float = DEFAULT_CAP_USD ## 0 = unlimited
 var max_calls: int = DEFAULT_MAX_CALLS ## 0 = unlimited
 var spent_usd := 0.0
 var paid_calls := 0
+## task -> {"usd": float, "calls": int}: what each task has spent, so the AssetDirector can keep
+## asset calls to their share.
+var by_task := {}
 ## task -> AIRequest.Tier, overriding the manifest's tier (see AIPrompts) for this session.
 var routes := {}
 
@@ -34,11 +37,30 @@ func route(task: String) -> AIRequest.Tier:
 
 
 ## Counts a finished call against the caps (free providers cost nothing).
-func charge(response: AIResponse, free: bool) -> void:
+func charge(response: AIResponse, free: bool, task: String = "") -> void:
 	if free:
 		return
 	paid_calls += 1
 	spent_usd += maxf(response.cost_usd, 0.0)
+	var spent: Dictionary = by_task.get_or_add(task, {"usd": 0.0, "calls": 0})
+	spent["usd"] = float(spent["usd"]) + maxf(response.cost_usd, 0.0)
+	spent["calls"] = int(spent["calls"]) + 1
+
+
+## How much of the tighter cap these tasks have used together, 0 to 1 (and beyond once over).
+func share_of(tasks: Array[String]) -> float:
+	var usd := 0.0
+	var calls := 0
+	for task: String in tasks:
+		var spent: Dictionary = by_task.get(task, {})
+		usd += float(spent.get("usd", 0.0))
+		calls += int(spent.get("calls", 0))
+	var share := 0.0
+	if cap_usd > 0.0:
+		share = usd / cap_usd
+	if max_calls > 0:
+		share = maxf(share, float(calls) / max_calls)
+	return share
 
 
 ## How much of the tighter cap is used, 0 to 1 (and beyond once over).

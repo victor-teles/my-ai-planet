@@ -23,6 +23,8 @@ var provider: AIProvider
 var fallback: AIProvider = OfflineTemplatesProvider.new()
 ## The last response from any provider, for the debug overlay.
 var last_response: AIResponse
+## The provider whose reply was accepted last (read it right after an await on a request).
+var answered_by := ""
 var calls := 0 ## provider calls made (cache hits and shared calls aren't calls)
 var cost_usd := 0.0
 var cache: AICache
@@ -87,6 +89,15 @@ func request_destiny(state: WorldState, on_text: Callable = Callable()) -> Dicti
 	var accept := func(reply: Dictionary) -> Variant: return reply
 	var chapter: Variant = await _ask(destiny_request(state), accept, on_text)
 	return _story(chapter, on_text)
+
+
+## A spec for one AI-authored asset (see AssetKind): the AI's, checked and clamped by the kind,
+## or else the kind's offline one. {} only if even the offline writer fails.
+func request_asset(kind: AssetKind, state: WorldState, subject: String) -> Dictionary:
+	var facts := kind.context(state, subject)
+	var accept := func(reply: Dictionary) -> Variant: return kind.accept(reply, facts)
+	var spec: Variant = await _ask(asset_request(kind, state, subject, facts), accept)
+	return spec if spec is Dictionary else {}
 
 
 ## The tone the prompts get: the world's, capped in Gentle Mode.
@@ -158,6 +169,13 @@ func destiny_request(state: WorldState) -> AIRequest:
 		"world_now": state.summarize(0),
 	}
 	return _request("destiny", record, state)
+
+
+## facts: the kind's context, when the caller already has it.
+func asset_request(kind: AssetKind, state: WorldState, subject: String, facts: Dictionary = {}) -> AIRequest:
+	var request := _request(kind.task(), facts if facts else kind.context(state, subject), state)
+	request.seed_value = kind.seed_for(state, subject)
+	return request
 
 
 ## pacing fills the {pacing} placeholder of the prompts that have one (DEFAULT_PACING when empty).
@@ -291,7 +309,7 @@ func _call(ai: AIProvider, request: AIRequest, key: String, on_text: Callable) -
 	_in_flight[key] = flight
 	var response := await _complete(ai, request, on_text)
 	_in_flight.erase(key)
-	budget.charge(response, _is_free(ai))
+	budget.charge(response, _is_free(ai), request.task)
 	if budget.exhausted() and not _is_free(ai) and _dropped_reason.is_empty():
 		_dropped_reason = "budget: " + budget.why_exhausted()
 		push_warning("Oracle: going offline until the budget allows more (%s)" % _dropped_reason)
@@ -345,6 +363,8 @@ func _judge(id: String, request: AIRequest, reply: Dictionary, accept: Callable)
 	var result: Variant = accept.call(reply)
 	if result == null:
 		push_warning("Oracle: %s proposed a %s the sim rejected: %s" % [id, request.task, reply])
+	else:
+		answered_by = id
 	return result
 
 

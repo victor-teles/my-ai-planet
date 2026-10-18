@@ -169,6 +169,9 @@ var gene_history: Array[Dictionary] = []
 ## Not saved: the day's chats, quarrels and courtships, for the view to act out. Newest last.
 var meetings: Array[Dictionary] = []
 var next_meeting_id: int = 0
+## AI-authored asset specs (styles, heraldry, posters, languages...), see AssetBook. They change
+## how the world looks and what things are called, never the sim's numbers.
+var assets: Dictionary = {}
 
 
 ## `bands` forces how many peoples land first (0 lets the seed decide); tests use 1.
@@ -1069,6 +1072,7 @@ func to_dict() -> Dictionary:
 		"destiny": destiny,
 		"destiny_progress": destiny_progress,
 		"society_history": society_history,
+		"assets": assets,
 		"prophecy": prophecy.to_dict() if prophecy else null,
 		"resolved_prophecy": resolved_prophecy.to_dict() if resolved_prophecy else null,
 	}
@@ -1180,6 +1184,7 @@ static func from_dict(data: Dictionary) -> WorldState:
 	state.destiny_progress = _whole_numbers_to_int(data["destiny_progress"])
 	for entry: Dictionary in data["society_history"]:
 		state.society_history.append(_whole_numbers_to_int(entry))
+	state.assets = _whole_numbers_to_int(data.get("assets", {})) # saves from before M3.5 have none
 	if data["prophecy"] is Dictionary:
 		state.prophecy = Prophecy.from_dict(data["prophecy"])
 	if data["resolved_prophecy"] is Dictionary:
