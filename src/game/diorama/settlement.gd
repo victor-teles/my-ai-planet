@@ -87,6 +87,9 @@ var _selection_ring: MeshInstance3D
 var _focus_ring: MeshInstance3D
 var _name_tag: Label3D
 var _focused := -1
+var _style: Dictionary = {} ## the tribe's look (StyleKind's spec): stored in the world, or written offline
+var _style_stamp := "" ## what _style was read for; read again when it changes
+var _fashion_key := "" ## a short key of the fashion, so figures redress when it changes
 
 
 func setup(name_of_tribe: String, island: IslandShape, work_sites: WorkSites) -> void:
@@ -185,6 +188,7 @@ func sync(state: WorldState, people: Dictionary, arrivals: Dictionary) -> void:
 	_water = state.tribe_water[t]
 	_project = state.tribe_project[t]
 	_age = state.age_of(t)
+	_sync_style(state)
 	_sync_buildings(state)
 	_sick_homes.clear()
 	for id: int in people:
@@ -213,7 +217,7 @@ func _sync_buildings(state: WorldState) -> void:
 		seen[id] = true
 		var built := state.is_built(b)
 		# Rebuilt in place (a hut becoming a row house) or finished, the model swaps.
-		var key := "%s|%s|%s" % [type, BuildingArt.variant(type, _age), built]
+		var key := "%s|%s|%s|%s" % [type, BuildingArt.variant(type, _age), StyledBuildings.key(type, _style), built]
 		if _building_keys.get(id, "") != key:
 			_build(id, type, state.building_slots[b], built)
 			_building_keys[id] = key
@@ -236,6 +240,31 @@ func _sync_buildings(state: WorldState) -> void:
 					BuildingArt.set_season(model, month)
 
 
+## Reads the tribe's style (architecture and fashion) when the stored spec changes, or, while the
+## world has none yet, when what it would be written for changes (see AssetDirector.spec_or_offline).
+## Buildings and figures whose look changed then rebuild, popping in anew.
+func _sync_style(state: WorldState) -> void:
+	var entry: Dictionary = state.assets.get(AssetBook.key("style", tribe_name), {})
+	var stamp := "%s@%s" % [entry.get("signature", ""), entry.get("tick", 0)]
+	if entry.is_empty():
+		var kind := AssetKinds.find("style")
+		stamp = "offline|" + (kind.signature(state, tribe_name) if kind else "")
+	if stamp == _style_stamp:
+		return
+	_style_stamp = stamp
+	_style = AssetDirector.spec_or_offline(state, "style", tribe_name)
+	_fashion_key = str(hash(_style.get("fashion", {})))
+
+
+## Whose clothes a person wears: the bonded and nobles by rank, guards by their job.
+static func _dress_class(status: String, job: String) -> String:
+	if status == "bonded":
+		return "bonded"
+	if job == "guard":
+		return "guard"
+	return "noble" if status == "noble" else "commoner"
+
+
 ## A building's node: a site with the building rising out of it, or the finished building.
 func _build(id: int, type: String, slot: int, built: bool) -> void:
 	if _buildings.has(id):
@@ -248,7 +277,7 @@ func _build(id: int, type: String, slot: int, built: bool) -> void:
 	if not wall and spot.length() > 0.01:
 		var to_fire := -spot
 		holder.rotation.y = atan2(to_fire.x, to_fire.z) if type != "field" else atan2(spot.x, spot.z) + PI / 2.0
-	var model := BuildingArt.wall(type, WALL_RADIUS, tint) if wall else BuildingArt.make(type, tint, _age)
+	var model := BuildingArt.wall(type, WALL_RADIUS, tint) if wall else BuildingArt.make(type, tint, _age, _style)
 	model.name = "Model"
 	if wall:
 		# Where a neighbor is close, the wall stops at the line between the two villages.
@@ -297,14 +326,15 @@ func _show_progress(id: int, type: String, progress: float) -> void:
 
 func _sync_person(id: int, info: Dictionary, arrivals: Dictionary, status: String, detained: bool) -> void:
 	var age := int(info["age"])
-	var key := "%s|%s" % [VillagerArt.looks_key(age, info["chief"]), status]
+	var dress_class := _dress_class(status, String(info["job"]))
+	var key := "%s|%s|%s|%s" % [VillagerArt.looks_key(age, info["chief"]), status, dress_class, _fashion_key]
 	var walker: Walker = _walkers.get(id)
 	if walker == null:
 		walker = Walker.new()
 		walker.id = id
 		_walkers[id] = walker
 	if walker.key != key:
-		var looks := VillagerArt.dress(VillagerArt.appearance_of(info["genome"], id, info["female"], age, info["chief"], tint), status)
+		var looks := VillagerArt.wear(VillagerArt.appearance_of(info["genome"], id, info["female"], age, info["chief"], tint), _style.get("fashion", {}), dress_class, tint)
 		walker.status = status
 		var old := walker.node
 		walker.node = VillagerArt.make(looks)

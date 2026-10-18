@@ -117,6 +117,22 @@ Later ages add an outer ring (mines, factories, prisons, towers) and a stone wal
 
 Villagers carry the tools of the new trades (pickaxe, hammer, book, purse, scroll, wrench); guards wear a helmet with a crest in the tribe's color and carry a pike; nobles wear a deeper tunic, a gold circlet and a cloak, and the bonded wear undyed cloth. `tools/building_gallery.gd` lines everything up for a check.
 
+### Styles and fashion (AI-authored)
+
+Each tribe has a style for its age, government and destiny (`ai/assets/style_kind.gd`), written by the player's AI or offline. It never names a color or a shape: it picks palette indices (`ArtPalette`) and words from a grammar, and the game clamps them.
+
+| Part | Choices | Where |
+|---|---|---|
+| Roof | cone, gable, dome (a barrel vault on long halls), stepped, flat (with a parapet), spire (a slender one on a block) | `game/diorama/styled_buildings.gd` |
+| Walls | daub (a dark base band), timber (corner posts and floor beams), stone (quoins), plaster (pilasters and a cornice), brick (white string courses), concrete (floor slabs); never newer than the age allows | |
+| Ornament | carved bands, painted (each kind of building washed in its own bright color), banners in the tribe's color, gilded bands and finials, grim (iron bands, slit windows, few lights) | |
+| Towers, proportion | 0 to 2 towers on the temple, school and great house; squat, balanced or tall walls | |
+| Fashion | a color per class (commoners, nobles, the bonded, guards), a pattern woven in the trim color (stripes, hem, checks, sash) and an accessory (headband, hat, hood, scarf, feather) | `VillagerArt.wear`, `villager.gdshader` |
+
+Homes, the temple, the great house, the school and the market take the style; the buildings of control keep their cold grey stone. The offline styles make the society readable: a Theocracy grows spires and gold, a Total State goes grey, flat-roofed and brutal with guards in dark uniforms, a Free Commons is a colorful patchwork; nobles wear their own finer color with a gold hem, the bonded plain drab. `tools/building_gallery.gd --show=styles` lines them up.
+
+![Styles](screenshots/m35-styles.png)
+
 ## Islands and atmosphere
 
 Each biome (`game/diorama/biome_look.gd`) has its own ground, leaf, grass and stone colors (swapped onto kit materials by name), tree mix and plant counts: meadow is the classic look; steppe is straw-gold grass and ochre with few trees and sandstone; jungle is deep saturated green, dense and tall; taiga is dark blue-green pines with snow in winter; highland is grey-violet rock, boulders and wind-bent trees.

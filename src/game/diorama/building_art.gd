@@ -68,10 +68,14 @@ const CROP_HEIGHTS: Array[float] = [0.0, 0.0, 0.03, 0.06, 0.1, 0.14, 0.17, 0.19,
 
 
 ## A building of a type in the tribe's color. age (the tribe's age, 0 to 4) only changes the
-## buildings listed by variant().
-static func make(type: String, tint: Color, age: int = 0) -> Node3D:
+## buildings listed by variant(). style (a tribe's StyleKind spec) restyles homes and civic
+## buildings (see StyledBuildings); without one they keep the art bible's default look.
+static func make(type: String, tint: Color, age: int = 0, style: Dictionary = {}) -> Node3D:
+	var styled := StyledBuildings.key(type, style)
 	if SIZES.has(type):
-		return _later(type, tint, variant(type, age))
+		return _later(type, tint, variant(type, age), styled)
+	if styled:
+		return _shaped("styled|" + type, tint, styled, HULL)
 	var thatch := THATCH.lerp(tint, 0.25)
 	match type:
 		"tent":
@@ -417,9 +421,10 @@ static func set_active(model: Node3D, active: bool) -> void:
 
 
 ## A later-age building: its merged body, plus kit props, lights, smoke and moving parts.
-static func _later(type: String, tint: Color, look: String) -> Node3D:
+## styled: the StyledBuildings key it is drawn in, or "" for the default look.
+static func _later(type: String, tint: Color, look: String, styled: String = "") -> Node3D:
 	var thin := type in ["broadcast_tower", "surveillance_mast", "watchtower"]
-	var model := _shaped(type, tint, look, 0.009 if thin else HULL)
+	var model := _shaped("styled|" + type, tint, styled, HULL) if styled else _shaped(type, tint, look, 0.009 if thin else HULL)
 	match type:
 		"mine":
 			_prop(model, "resource-stone-large", 0.12, Vector3(0.34, 0.0, 0.32), 0.6)
@@ -524,6 +529,8 @@ static func _shaped(key: String, tint: Color, look: String, outline: float) -> N
 				_draw_site(s, parts[1])
 			"stone_wall":
 				_draw_wall_piece(s, look, float(parts[2]), tint)
+			"styled":
+				StyledBuildings.draw(s, parts[1], tint, look)
 			_:
 				_draw(s, key, tint, look)
 		var body := s.solid.commit()
