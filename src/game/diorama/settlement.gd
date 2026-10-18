@@ -90,6 +90,11 @@ var _focused := -1
 var _style: Dictionary = {} ## the tribe's look (StyleKind's spec): stored in the world, or written offline
 var _style_stamp := "" ## what _style was read for; read again when it changes
 var _fashion_key := "" ## a short key of the fashion, so figures redress when it changes
+var _emblems_due := 0 ## msec when the banner, posters and monuments are next checked
+var _banner: Node3D
+var _banner_key := ""
+var _posters: Array[Node3D] = []
+var _posters_key := ""
 
 
 func setup(name_of_tribe: String, island: IslandShape, work_sites: WorkSites) -> void:
@@ -190,6 +195,7 @@ func sync(state: WorldState, people: Dictionary, arrivals: Dictionary) -> void:
 	_age = state.age_of(t)
 	_sync_style(state)
 	_sync_buildings(state)
+	_sync_emblems(state)
 	_sick_homes.clear()
 	for id: int in people:
 		var info: Dictionary = people[id]
@@ -816,6 +822,230 @@ func _end_meeting(walker: Walker) -> void:
 	walker.phase = ""
 	if walker.emote:
 		walker.emote.visible = false
+
+
+# --- Banner, posters and monuments (AI-authored specs, see AssetDirector) -----------
+
+const EMBLEM_SECONDS := 0.5 ## how often the banner, posters and monuments are checked
+## Where propaganda goes up first: the masts and towers, the seats of power and control.
+const POSTER_HOSTS: Array[String] = ["broadcast_tower", "surveillance_mast", "great_house", "barracks", "prison", "factory", "watchtower"]
+const BANNER_SIZE := Vector2(0.26, 0.325)
+const POSTER_SIZE := Vector2(0.23, 0.316)
+
+
+## Keeps the banner by the fire (or the great house), a poster for every dark law in force and
+## the statues' poses and temples' signs in step with their specs. Specs come from the world, or
+## the offline writer while the AI is still writing them, so nothing waits.
+func _sync_emblems(state: WorldState) -> void:
+	var now := Time.get_ticks_msec()
+	if now < _emblems_due:
+		return
+	_emblems_due = now + roundi(EMBLEM_SECONDS * 1000.0)
+	var t := state.tribe_index(tribe_name)
+	if t == -1:
+		return
+	_sync_banner(state)
+	_sync_posters(state, t)
+	_sync_monuments(state)
+
+
+func _sync_banner(state: WorldState) -> void:
+	var spec := AssetDirector.spec_or_offline(state, "heraldry", tribe_name)
+	var houses := _built_of("great_house")
+	var key := "%d|%s|%s" % [houses[0] if not houses.is_empty() else -1, spec.get("field", -1), spec.get("emblem", "")]
+	if key == _banner_key or spec.is_empty():
+		return
+	_banner_key = key
+	if _banner:
+		_vanish(_banner)
+	_banner = make_banner(spec)
+	var spot: Vector3
+	var facing: Vector3
+	if houses.is_empty():
+		# By the fire, on the side away from the island's middle.
+		var out := Vector3(position.x, 0.0, position.z)
+		facing = out.normalized() if out.length() > 0.5 else Vector3.BACK
+		spot = facing.rotated(Vector3.UP, 0.6) * 0.78
+	else:
+		var house: Vector3 = _building_spots[houses[0]]
+		facing = -house.normalized()
+		spot = house + facing * 0.6 + facing.cross(Vector3.UP) * 0.36
+	_banner.position = Vector3(spot.x, _ground(spot), spot.z)
+	_banner.rotation.y = atan2(facing.x, facing.z)
+	add_child(_banner)
+	_pop_in(_banner)
+
+
+## A pole with a crossbar and the banner hanging from it, painted on both faces.
+static func make_banner(spec: Dictionary) -> Node3D:
+	var holder := Node3D.new()
+	holder.name = "Banner"
+	var wood := ToonMaterials.get_material(BuildingArt.TIMBER, 0.006)
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.013
+	pole.bottom_radius = 0.018
+	pole.height = 1.08
+	pole.radial_segments = 6
+	holder.add_child(_part(pole, wood, Vector3(0.0, 0.54, 0.0)))
+	var bar := CylinderMesh.new()
+	bar.top_radius = 0.009
+	bar.bottom_radius = 0.009
+	bar.height = BANNER_SIZE.x + 0.06
+	bar.radial_segments = 5
+	holder.add_child(_part(bar, wood, Vector3(0.0, 0.99, 0.02), Vector3(0.0, 0.0, PI / 2.0)))
+	var knob := SphereMesh.new()
+	knob.radius = 0.028
+	knob.height = 0.056
+	holder.add_child(_part(knob, ToonMaterials.get_material(BuildingArt.GOLD, 0.006), Vector3(0.0, 1.1, 0.0)))
+	var cloth := QuadMesh.new()
+	cloth.size = BANNER_SIZE
+	var painted := EmblemArt.material(EmblemArt.banner_texture(spec))
+	var middle := 0.98 - BANNER_SIZE.y / 2.0
+	holder.add_child(_part(cloth, painted, Vector3(0.0, middle, 0.03)))
+	holder.add_child(_part(cloth, painted, Vector3(0.0, middle, 0.026), Vector3(0.0, PI, 0.0)))
+	return holder
+
+
+func _sync_posters(state: WorldState, t: int) -> void:
+	var specs: Array[Dictionary] = []
+	for law: String in Society.laws_of(state, t):
+		if Laws.is_dystopian(law):
+			var spec := AssetDirector.spec_or_offline(state, "poster", "%s|%s" % [tribe_name, law])
+			if not spec.is_empty():
+				specs.append(spec)
+	var spots := _poster_spots(specs.size())
+	var parts := PackedStringArray()
+	for k: int in specs.size():
+		parts.append("%s|%s|%s|%s|%s" % [specs[k].get("slogan", ""), specs[k].get("ground", 0), specs[k].get("ink", 0), specs[k].get("emblem", ""), spots[k]])
+	var key := "\n".join(parts)
+	if key == _posters_key:
+		return
+	_posters_key = key
+	for board: Node3D in _posters:
+		_vanish(board)
+	_posters.clear()
+	for k: int in specs.size():
+		var spot: Array = spots[k]
+		var board := make_poster(specs[k])
+		var at: Vector3 = spot[0]
+		var facing: Vector3 = spot[1]
+		board.position = Vector3(at.x, _ground(at), at.z)
+		board.rotation.y = atan2(facing.x, facing.z)
+		add_child(board)
+		_pop_in(board)
+		_posters.append(board)
+
+
+## Where n posters go, as [spot, the way they face]: in front of the masts, towers and seats of
+## power first, then along the inside of the wall, then on boards around the fire.
+func _poster_spots(n: int) -> Array[Array]:
+	var spots: Array[Array] = []
+	for type: String in POSTER_HOSTS:
+		for id: int in _built_of(type):
+			var at: Vector3 = _building_spots[id]
+			var facing := -at.normalized()
+			var depth: float = (BuildingArt.SIZES[type] as Vector3).y + 0.14
+			spots.append([at + facing * depth + facing.cross(Vector3.UP) * 0.2, facing])
+	var walled := not _built_of("stone_wall").is_empty() or not _built_of("palisade").is_empty()
+	for k: int in (6 if walled else 0):
+		var on_wall := Vector3.FORWARD.rotated(Vector3.UP, 0.5 + TAU * k / 6.0) * (WALL_RADIUS - 0.16)
+		if _own_side(on_wall, 0.2) and shape.is_buildable(position.x + on_wall.x, position.z + on_wall.z, 0.1):
+			spots.append([on_wall, -on_wall.normalized()])
+	var k := 0
+	while spots.size() < n:
+		var by_fire := Vector3.FORWARD.rotated(Vector3.UP, 2.2 + k * 0.62) * 0.92
+		spots.append([by_fire, -by_fire.normalized()])
+		k += 1
+	return spots.slice(0, n)
+
+
+## A painted board on two posts, its slogan lettered in the band at its foot.
+static func make_poster(spec: Dictionary) -> Node3D:
+	var holder := Node3D.new()
+	holder.name = "Poster"
+	var base := 0.17
+	var wood := ToonMaterials.get_material(BuildingArt.TIMBER, 0.006)
+	var post := CylinderMesh.new()
+	post.top_radius = 0.009
+	post.bottom_radius = 0.011
+	post.height = base + POSTER_SIZE.y
+	post.radial_segments = 5
+	for x: float in [-0.085, 0.085]:
+		holder.add_child(_part(post, wood, Vector3(x, post.height / 2.0, -0.016)))
+	var back := BoxMesh.new()
+	back.size = Vector3(POSTER_SIZE.x + 0.02, POSTER_SIZE.y + 0.02, 0.016)
+	var middle := base + POSTER_SIZE.y / 2.0
+	holder.add_child(_part(back, ToonMaterials.get_material(BuildingArt.IRON, 0.006), Vector3(0.0, middle, -0.002)))
+	var face := QuadMesh.new()
+	face.size = POSTER_SIZE
+	holder.add_child(_part(face, EmblemArt.material(EmblemArt.poster_texture(spec)), Vector3(0.0, middle, 0.0075)))
+	var words := Label3D.new()
+	words.text = String(spec.get("slogan", "")).to_upper()
+	words.font = UiStyle.font("caps")
+	words.font_size = 22
+	words.pixel_size = 0.0008
+	words.outline_size = 0
+	words.width = (POSTER_SIZE.x - 0.025) / words.pixel_size
+	words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	words.modulate = ArtPalette.color(int(spec.get("ground", 30)))
+	words.position = Vector3(0.0, middle + POSTER_SIZE.y / 2.0 - POSTER_SIZE.y * 71.5 / 88.0, 0.011)
+	holder.add_child(words)
+	return holder
+
+
+## Statues take the pose their spec gives the ruler; temples show their holy sign on the pediment.
+## A building rebuilt by _sync_buildings loses these, so they are checked every time.
+func _sync_monuments(state: WorldState) -> void:
+	for type: String in MonumentKind.TYPES:
+		for id: int in _built_of(type):
+			var model := (_buildings[id] as Node3D).get_node_or_null("Model") as Node3D
+			if model == null:
+				continue
+			var spec := AssetDirector.spec_or_offline(state, "monument", str(id))
+			if type == "statue":
+				var pose := String(spec.get("pose", "raised_fist"))
+				var figure := model.get_node_or_null("Figure") as Node3D
+				if figure and String(figure.get_meta("pose", "")) != pose:
+					model.remove_child(figure)
+					figure.queue_free()
+					model.add_child(BuildingArt.statue_figure(pose))
+			else:
+				var icon := String(spec.get("iconography", ""))
+				var plaque := model.get_node_or_null("Icon") as Node3D
+				if icon and (plaque == null or String(plaque.get_meta("icon", "")) != icon):
+					if plaque:
+						model.remove_child(plaque)
+						plaque.queue_free()
+					model.add_child(make_temple_sign(icon))
+
+
+## A temple's holy sign: a painted plaque on the front of its pediment, the model's "Icon" child.
+static func make_temple_sign(icon: String) -> MeshInstance3D:
+	var tile := QuadMesh.new()
+	tile.size = Vector2(0.12, 0.12)
+	var holy_sign := _part(tile, EmblemArt.material(EmblemArt.texture(EmblemArt.plaque_svg(icon))), Vector3(0.0, 0.79, 0.332))
+	holy_sign.name = "Icon"
+	holy_sign.set_meta("icon", icon)
+	return holy_sign
+
+
+## Finished buildings of a type in this village, oldest first.
+func _built_of(type: String) -> Array[int]:
+	var found: Array[int] = []
+	for id: int in _building_types:
+		if _building_types[id] == type and String(_building_keys.get(id, "")).ends_with("true"):
+			found.append(id)
+	found.sort()
+	return found
+
+
+static func _part(mesh: Mesh, material: Material, at: Vector3, turn: Vector3 = Vector3.ZERO) -> MeshInstance3D:
+	var part := MeshInstance3D.new()
+	part.mesh = mesh
+	part.material_override = material
+	part.position = at
+	part.rotation = turn
+	return part
 
 
 # --- Layout -------------------------------------------------------------------------

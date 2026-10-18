@@ -133,6 +133,20 @@ Homes, the temple, the great house, the school and the market take the style; th
 
 ![Styles](screenshots/m35-styles.png)
 
+## Banners, posters and monuments
+
+The player's AI writes them as small specs (or the game does, offline), and the game draws them in this bible's palette (`ai/assets/heraldry_kind.gd`, `poster_kind.gd`, `monument_kind.gd`; drawn by `game/diorama/emblem_art.gd` and `settlement.gd`). Emblems are SVG on a 64-unit square, in palette indices only, cleaned by `SvgGuard` (basic shapes and paths: no text, styles or links) and rasterized with `Image.load_svg_from_string`.
+
+![Banners, statue poses, a temple's sign and posters](screenshots/m35-heraldry.png)
+
+| Thing | Look |
+|---|---|
+| Banner | Hangs from a crossbar on a pole with a gold knob, by the fire, then in front of the great house. The cloth is the house's field color with a gold trim (ink on light fields), the emblem, and a band of the emblem's color at the foot. A new house, a coup, a revolution or a new ruling faction hangs a new one |
+| Emblem | Bold and simple, like a woodcut. Offline, `EmblemGrammar` draws a charge (sun, moon, star, tree, wave, eye, crown, flame, hand, mountain, wheel, tower, fish, grain), sometimes over an ordinary (border, chief, pale, per pale, bend, chevron, base) |
+| Poster | A painted board on two posts for every dark law: paper and print colors, a motif, and the slogan lettered in capitals in the band at its foot. In front of the broadcast towers, surveillance masts and seats of power first, then along the inside of the wall, then around the fire |
+| Statue | The ruler's pose shows their vanity: fist raised, sword held high, pointing the way, arms open, holding out a scroll, or leaning on a staff |
+| Temple | Its holy sign in gold on a dark roundel, on the front of the pediment |
+
 ## Islands and atmosphere
 
 Each biome (`game/diorama/biome_look.gd`) has its own ground, leaf, grass and stone colors (swapped onto kit materials by name), tree mix and plant counts: meadow is the classic look; steppe is straw-gold grass and ochre with few trees and sandstone; jungle is deep saturated green, dense and tall; taiga is dark blue-green pines with snow in winter; highland is grey-violet rock, boulders and wind-bent trees.

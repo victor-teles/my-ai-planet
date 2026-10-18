@@ -7,6 +7,9 @@ const SCRIPTS: Array[Script] = [
 	preload("res://ai/assets/language_kind.gd"),
 	preload("res://ai/assets/names_kind.gd"),
 	preload("res://ai/assets/style_kind.gd"),
+	preload("res://ai/assets/heraldry_kind.gd"),
+	preload("res://ai/assets/poster_kind.gd"),
+	preload("res://ai/assets/monument_kind.gd"),
 ]
 
 static var _all: Array[AssetKind] = []

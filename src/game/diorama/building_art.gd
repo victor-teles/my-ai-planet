@@ -473,10 +473,7 @@ static func _later(type: String, tint: Color, look: String, styled: String = "")
 				fire.add_child(fire.light)
 				model.add_child(fire)
 		"statue":
-			var figure := VillagerArt.statue(ToonMaterials.get_material(COLD_STONE.lightened(0.12), 0.0006), 0.9, COLD_STONE)
-			figure.position.y = 0.42
-			figure.scale = Vector3.ONE * 1.5
-			model.add_child(figure)
+			model.add_child(statue_figure())
 		"broadcast_tower":
 			var blink := BuildingMotion.make(BuildingMotion.Kind.BLINK, 0.7, 0.45)
 			for y: float in [3.08, 1.62]:
@@ -515,6 +512,17 @@ static func _later(type: String, tint: Color, look: String, styled: String = "")
 				leds.add_child(led)
 			model.add_child(leds)
 	return model
+
+
+## The ruler carved in stone for a statue's plinth, in a pose (see VillagerArt.statue). It is the
+## model's "Figure" child, so the view can re-pose it when the monument's spec says otherwise.
+static func statue_figure(pose: String = "raised_fist") -> Node3D:
+	var figure := VillagerArt.statue(ToonMaterials.get_material(COLD_STONE.lightened(0.12), 0.0006), 0.9, COLD_STONE, pose)
+	figure.name = "Figure"
+	figure.position.y = 0.42
+	figure.scale = Vector3.ONE * 1.5
+	figure.set_meta("pose", pose)
+	return figure
 
 
 ## A model's merged body (built once per type, color and variant, then shared), its outline

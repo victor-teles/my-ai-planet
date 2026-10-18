@@ -190,7 +190,7 @@ func test_pacing_hint_reaches_the_prompts() -> void:
 	var oracle := Oracle.new(fake, AICache.new())
 	oracle.budget = AIBudget.new()
 	var session := Session.new(Simulation.create(42), oracle)
-	# The fake only answers prophecies: no asset specs (their failures would trip its breaker).
+	# The fake only answers prophecies, and its last request must be one: no asset specs.
 	session.assets.kinds = []
 	await session.begin()
 	assert_eq(fake.last_request.task, "prophecy")

@@ -319,7 +319,10 @@ static func set_headgear(villager: Node3D, kind: String, metal: Color, crest: Co
 
 ## A still figure in the idle clip's first pose with the right arm raised (radians above level), carved from
 ## one material, crowned and cloaked: the ruler, for statues. Adult proportions, like every villager.
-static func statue(material: Material, raise: float, cloak: Color) -> Node3D:
+## pose is one of STATUE_POSES: "raised_fist" (the arm raised by raise), "sword" (a blade held high),
+## "pointing" (the way forward), "open_arms" (embracing the people), "scroll" (holding out the law)
+## or "staff" (leaning on a tall staff).
+static func statue(material: Material, raise: float, cloak: Color, pose: String = "raised_fist") -> Node3D:
 	var figure := Node3D.new()
 	var model := MODEL.instantiate() as Node3D
 	model.scale = Vector3.ONE * MODEL_SCALE
@@ -337,22 +340,81 @@ static func statue(material: Material, raise: float, cloak: Color) -> Node3D:
 			Animation.TYPE_POSITION_3D:
 				skeleton.set_bone_pose_position(bone, idle.position_track_interpolate(track, 0.0))
 	skeleton.set_bone_pose_scale(skeleton.find_bone("Head"), Vector3.ONE * HEAD_SCALE)
-	# Straighten the right arm and turn it to point up, forward and out. The skeleton is Z-up
-	# and faces -Y; poses are worked out along the bone chain, since its cache isn't fresh yet.
-	var arm := skeleton.find_bone("RightArm")
-	var forearm := skeleton.find_bone("RightForeArm")
+	# Arms are aimed as (out to the side, forward, up).
+	match pose:
+		"sword":
+			_aim_arm(skeleton, "Right", Vector3(0.25, 0.3, 1.0))
+			_statue_prop(skeleton, material, "sword")
+		"pointing":
+			_aim_arm(skeleton, "Right", Vector3(0.3, 1.0, 0.3))
+		"open_arms":
+			_aim_arm(skeleton, "Right", Vector3(1.0, 0.5, 0.45))
+			_aim_arm(skeleton, "Left", Vector3(1.0, 0.5, 0.45))
+		"scroll":
+			_aim_arm(skeleton, "Right", Vector3(0.25, 0.9, -0.1))
+			_statue_prop(skeleton, material, "scroll")
+		"staff":
+			_aim_arm(skeleton, "Right", Vector3(0.3, 0.3, -1.0))
+			_statue_prop(skeleton, material, "staff")
+		_:
+			_aim_arm(skeleton, "Right", Vector3(cos(raise) * 0.55, 0.4, sin(raise)))
+	var head := _head_holder(skeleton, HEAD_SCALE)
+	_add_circlet(head, 0.04)
+	_add_cloak(skeleton, cloak)
+	return figure
+
+
+## Straightens an arm ("Right" or "Left") and turns it to point along aim: how far out to its
+## own side, forward and up. The skeleton is Z-up and faces -Y; poses are worked out along the
+## bone chain, since its cache isn't fresh yet.
+static func _aim_arm(skeleton: Skeleton3D, side_name: String, aim: Vector3) -> void:
+	var arm := skeleton.find_bone(side_name + "Arm")
+	var forearm := skeleton.find_bone(side_name + "ForeArm")
 	skeleton.set_bone_pose_rotation(forearm, Quaternion.IDENTITY)
 	var parent := _bone_global(skeleton, skeleton.get_bone_parent(arm))
 	var local := skeleton.get_bone_pose(arm)
 	var pointing := ((parent * local).basis * skeleton.get_bone_pose_position(forearm)).normalized()
 	var side := signf((parent * local).origin.x)
-	var wanted := Vector3(side * cos(raise) * 0.55, -0.4, sin(raise)).normalized()
+	var wanted := Vector3(side * aim.x, -aim.y, aim.z).normalized()
 	var turn := Basis(Quaternion(pointing, wanted))
 	skeleton.set_bone_pose_rotation(arm, (parent.basis.inverse() * turn * parent.basis * local.basis).get_rotation_quaternion())
-	var head := _head_holder(skeleton, HEAD_SCALE)
-	_add_circlet(head, 0.04)
-	_add_cloak(skeleton, cloak)
-	return figure
+
+
+## Something a statue holds in its right hand, carved from its stone: "sword", "scroll" or "staff".
+static func _statue_prop(skeleton: Skeleton3D, material: Material, prop: String) -> void:
+	var attachment := BoneAttachment3D.new()
+	attachment.bone_name = "RightHand"
+	skeleton.add_child(attachment)
+	var holder := Node3D.new()
+	holder.scale = Vector3.ONE / (100.0 * MODEL_SCALE)
+	attachment.add_child(holder)
+	# The props are in world-sized units, so they take an outline of their own size.
+	var tint: Color = (material as ShaderMaterial).get_shader_parameter("tint") if material is ShaderMaterial else Color(0.7, 0.7, 0.75)
+	var stone := ToonMaterials.get_material(tint, 0.004)
+	var model: Node3D
+	match prop:
+		"sword":
+			# The hand bone runs toward the fingertips (+Y): the blade rises out of the fist.
+			model = Node3D.new()
+			model.add_child(_hair_part(_box(Vector3(0.03, 0.26, 0.01)), stone, Vector3(0.0, 0.19, 0.0)))
+			model.add_child(_hair_part(_box(Vector3(0.11, 0.02, 0.024)), stone, Vector3(0.0, 0.055, 0.0)))
+			model.add_child(_hair_part(_sphere(0.018), stone, Vector3(0.0, -0.035, 0.0)))
+		"staff":
+			# Held like a guard's pike: most of it rises above the hand.
+			model = Node3D.new()
+			model.add_child(_hair_part(_rod(0.011, 0.86), stone, Vector3(0.0, -0.2, 0.0)))
+			model.add_child(_hair_part(_sphere(0.03), stone, Vector3(0.0, -0.64, 0.0)))
+		_:
+			model = _tool_model(prop)
+			for part: Node in model.find_children("*", "MeshInstance3D", true, false):
+				(part as MeshInstance3D).material_override = stone
+	holder.add_child(model)
+
+
+static func _box(size: Vector3) -> BoxMesh:
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	return mesh
 
 
 ## Eases a villager between standing (0) and walking (1).
@@ -716,12 +778,6 @@ static func _hood() -> SphereMesh:
 	mesh.is_hemisphere = true
 	mesh.radial_segments = 10
 	mesh.rings = 3
-	return mesh
-
-
-static func _box(size: Vector3) -> BoxMesh:
-	var mesh := BoxMesh.new()
-	mesh.size = size
 	return mesh
 
 
