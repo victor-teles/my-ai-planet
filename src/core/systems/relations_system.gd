@@ -494,10 +494,12 @@ func _household(state: WorldState, p: int) -> Array[int]:
 static func split_tribe(state: WorldState, t: int, leaving: Array[int], leader: int = -1) -> int:
 	var from := state.tribe_names[t]
 	var share := float(leaving.size()) / maxf(state.tribe_population[t], 1.0)
-	var new_name := NameGen.tribe_name(state.rng)
+	# They take their tongue with them, and it drifts into a dialect of its own.
+	var language := Language.drift(Language.of(state, t), state.rng)
+	var new_name := NameGen.tribe_name(state.rng, language)
 	while state.tribe_index(new_name) != -1:
-		new_name = NameGen.tribe_name(state.rng)
-	var n := state.add_tribe(new_name, state.roomiest_water())
+		new_name = NameGen.tribe_name(state.rng, language)
+	var n := state.add_tribe(new_name, state.roomiest_water(), {}, language)
 	for field: String in ["tribe_food", "tribe_wood", "tribe_stone"]:
 		var stores: PackedFloat64Array = state.get(field)
 		var taken := stores[t] * share

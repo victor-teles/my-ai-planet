@@ -9,7 +9,8 @@ extends RefCounted
 ## Recipe keys: "name", "biome", "rain", "drought", "winter", "sickness", "rates" ({forage, hunt,
 ## fish, farm, wood, stone}: multipliers), "ores" ({copper, tin, iron, coal}: 0 is none, up to 1.5),
 ## "hazard", "island" ({radius, roughness, hills, pond: [x, z], pond_radius, springs}),
-## "trees", "rocks" (how thickly the view plants them), "peoples": [{"name", "couples", "culture"}],
+## "trees", "rocks" (how thickly the view plants them), "peoples": [{"name", "couples", "culture",
+## "language" (its tongue, see Language; recipes from before languages have none)}],
 ## and, added by WorldState.create from the island's shape, "camps": how many tribes it has room for.
 ## Every number in a recipe is a float on the save grid (WorldState.FLOAT_STEP), so it survives a
 ## save and load bit for bit.
@@ -39,6 +40,8 @@ const ORES: Array[String] = ["copper", "tin", "iron", "coal"]
 const ORE_MISSING := {"copper": 0.15, "tin": 0.35, "iron": 0.2, "coal": 0.25}
 ## Each people's leanings start here and drift for ever after (see Society.CULTURE_AXES).
 const CULTURE_SPREAD := 35
+## Seeds each people's tongue apart from the recipe's own stream.
+const LANGUAGE_STREAM := 1000003
 
 
 ## `bands` forces how many peoples land first (0 lets the seed decide); tests use 1.
@@ -72,9 +75,12 @@ static func generate(seed_value: int, bands: int = 0) -> Dictionary:
 		var culture := {}
 		for axis: String in Society.CULTURE_AXES:
 			culture[axis] = float(clampi(rng.randi_range(-CULTURE_SPREAD, CULTURE_SPREAD) + int((info["culture"] as Dictionary).get(axis, 0)), -100, 100))
-		peoples.append({"name": NameGen.tribe_name(rng), "couples": 5.0 if bands == 1 else (4.0 if bands == 2 else 3.0), "culture": culture})
+		# Each people speaks a tongue of its own, drawn from its own stream so the rest of the recipe
+		# doesn't hang on how long it took to make; its name is already in that tongue.
+		var language := Language.generate(SimRng.new(seed_value * 7919 + 104729 + LANGUAGE_STREAM * (k + 1)))
+		peoples.append({"name": NameGen.tribe_name(rng, language), "couples": 5.0 if bands == 1 else (4.0 if bands == 2 else 3.0), "culture": culture, "language": _recipe_language(language)})
 	return {
-		"name": NameGen.tribe_name(rng),
+		"name": NameGen.tribe_name(rng, people_language(peoples[0])), # named by the first to land
 		"biome": biome,
 		"rain": _snap(float(info["rain"]) * rng_range(rng, 0.92, 1.08)),
 		"drought": _snap(float(info["drought"]) * rng_range(rng, 0.8, 1.25)),
@@ -123,6 +129,19 @@ static func describe(world: Dictionary) -> String:
 		parts.append("no " + " or ".join(none))
 	var line := "%s, a %s" % [world["name"], String(BIOMES[world["biome"]]["name"])]
 	return line + (": " + ", ".join(parts) if not parts.is_empty() else "") + "."
+
+
+## The tongue a founding people brought, or {} (the default sound) for recipes from before languages.
+static func people_language(people: Dictionary) -> Dictionary:
+	return Language.clamp_spec(people.get("language", {}))
+
+
+## A people's tongue as the recipe keeps it: its percents as floats, like every number in a recipe.
+static func _recipe_language(language: Dictionary) -> Dictionary:
+	var kept := language.duplicate(true)
+	for key: String in ["closed", "long"]:
+		kept[key] = float(language[key])
+	return kept
 
 
 static func rng_range(rng: SimRng, low: float, high: float) -> float:

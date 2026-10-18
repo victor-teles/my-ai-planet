@@ -168,19 +168,26 @@ func test_birth_permits_refuse_carriers_of_frailty() -> void:
 
 
 func test_nobles_marry_nobles_where_the_law_says_so() -> void:
-	var state := WorldState.create(42, 1)
-	var singles: Array[int] = []
-	for p: int in state.person_ids.size():
-		if state.person_partners[p] == -1 and People.is_adult(state, p) and state.person_attraction[p] == 0:
-			singles.append(p)
+	# The first island (from seed 42 on) whose founding band has two singles who could court.
+	var state: WorldState
 	var a := -1
 	var b := -1
-	for p: int in singles:
-		for q: int in singles:
-			if state.person_sexes[p] != state.person_sexes[q] and SocialSystem._could_court(state, p, q):
-				a = p
-				b = q
+	for seed_value: int in range(42, 62):
+		state = WorldState.create(seed_value, 1)
+		var singles: Array[int] = []
+		for p: int in state.person_ids.size():
+			if state.person_partners[p] == -1 and People.is_adult(state, p) and state.person_attraction[p] == 0:
+				singles.append(p)
+		for p: int in singles:
+			for q: int in singles:
+				if state.person_sexes[p] != state.person_sexes[q] and SocialSystem._could_court(state, p, q):
+					a = p
+					b = q
+		if a != -1:
+			break
 	assert_true(a != -1, "two singles who could court")
+	if a == -1:
+		return
 	state.person_status[a] = "noble"
 	assert_true(SocialSystem._could_court(state, a, b), "love can cross the line without the law")
 	state.pass_law(0, "class_marriage")
