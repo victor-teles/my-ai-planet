@@ -76,7 +76,10 @@ static func spec_or_offline(state: WorldState, task: String, subject: String) ->
 
 ## How much of the asset share is used, 0 to 1.
 func used_share() -> float:
-	return oracle.budget.share_of(AssetKinds.tasks()) / SHARE
+	var tasks: Array[String] = []
+	for kind: AssetKind in kinds:
+		tasks.append(kind.task())
+	return oracle.budget.share_of(tasks) / SHARE
 
 
 func _is_stale(state: WorldState, kind: AssetKind, subject: String) -> bool:
