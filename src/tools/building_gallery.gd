@@ -3,7 +3,9 @@ extends SceneTree
 ## under the game's dusk light, renders a few frames and saves one, so the art can be checked at a
 ## glance. Opens a window briefly.
 ## Usage: Godot --path Godot --resolution 1600x900 -s res://tools/building_gallery.gd --
-##   --out=/tmp/gallery.png [--show=buildings|people|walls|<building type>] [--age=4]
+##   --out=/tmp/gallery.png [--show=buildings|people|walls|styles|<building type>] [--age=4]
+##   [--island=meadow] [--seed=3] [--row=0|1|2] (styles: a Theocracy, a Total State and a Free Commons,
+##   or one of them)
 ##   [--site] (a building site instead) [--look-height=1.0] [--yaw=0.5] [--pitch=-0.45] [--distance=16] [--frames=40]
 
 const SKY_SHADER := preload("res://art/shaders/sky_dusk.gdshader")
@@ -68,6 +70,9 @@ func _initialize() -> void:
 				label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 				figure.add_child(label)
 			center = Vector3(0.0, 0.4, 0.0)
+		"styles":
+			_styles(world, age)
+			center = Vector3(0.0, 0.3, 0.0)
 		"walls":
 			for k: int in 2:
 				var ring := BuildingArt.wall(["palisade", "stone_wall"][k], 2.68, TINT)
@@ -87,6 +92,49 @@ func _initialize() -> void:
 	var distance := float(_options.get("distance", 16.0))
 	camera.position = center + Vector3(sin(yaw) * cos(pitch), -sin(pitch), cos(yaw) * cos(pitch)) * distance
 	camera.look_at_from_position(camera.position, center)
+
+
+## One row per society, each in its offline style (StyleKind): its homes and civic buildings, and
+## in front of them a commoner, a noble, one of the bonded and a guard in its fashion.
+func _styles(world: Node3D, age: int) -> void:
+	var kind := StyleKind.new()
+	var rows: Array[Dictionary] = [
+		{"government": "Theocracy", "culture": {"piety": 60}, "tint": Color(0.85, 0.62, 0.38)},
+		{"government": "Total State", "dystopia": 80, "dystopia_kind": "surveillance", "culture": {"martial": 30}, "tint": Color(0.62, 0.42, 0.62)},
+		{"government": "Democracy", "destiny_id": "free_commons", "culture": {"openness": 50}, "tint": Color(0.38, 0.66, 0.78)},
+	]
+	var types: Array[String] = ["hut", "stone_house", "rowhouse", "apartment", "temple", "great_house", "school", "market"]
+	var only := int(_options.get("row", -1))
+	for r: int in rows.size():
+		if only != -1 and r != only:
+			continue
+		var facts: Dictionary = rows[r].duplicate()
+		facts.merge({"age_level": age, "island": String(_options.get("island", "meadow"))})
+		var style: Dictionary = kind.accept(kind.offline(facts, int(_options.get("seed", 3)) + r), facts)
+		print(facts["government"], " ", style)
+		var tint: Color = facts["tint"]
+		var z := (r - 1) * 3.4 if only == -1 else 0.0
+		for i: int in types.size():
+			var model := BuildingArt.make(types[i], tint, age, style)
+			model.position = Vector3(i * 1.45 - 5.1, 0.0, z - 0.55)
+			world.add_child(model)
+		var classes: Array[String] = ["commoner", "commoner", "noble", "bonded", "guard"]
+		for k: int in classes.size():
+			var looks := VillagerArt.wear(VillagerArt.appearance(r * 11 + k * 5 + 1, k % 2 == 1, 30, false, tint), style["fashion"], classes[k], tint)
+			var figure := VillagerArt.make(looks)
+			figure.position = Vector3(k * 0.42 - 0.9, 0.0, z + 0.75)
+			world.add_child(figure)
+			if classes[k] == "guard":
+				VillagerArt.set_tool(figure, "pike")
+				VillagerArt.set_headgear(figure, "helmet", Color(0.66, 0.66, 0.72), tint)
+		if only != -1:
+			continue
+		var label := Label3D.new()
+		label.text = String(facts["government"]) + ("" if not facts.has("destiny_id") else " (Free Commons)")
+		label.pixel_size = 0.006
+		label.position = Vector3(-6.4, 0.5, z)
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		world.add_child(label)
 
 
 func _process(_delta: float) -> bool:

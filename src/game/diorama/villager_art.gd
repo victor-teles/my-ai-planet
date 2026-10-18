@@ -46,10 +46,16 @@ const FEMALE_FACES: Array[String] = ["f1"]
 const MALE_HAIR: Array[String] = ["short", "short", "short", "topknot", "long"]
 const FEMALE_HAIR: Array[String] = ["long", "long", "bun", "ponytail", "braid"]
 const CHILD_HAIR: Array[String] = ["short", "short", "ponytail"]
+## Fashion (see wear()): the share of the tribe's own color in each class's clothes, so neighbors
+## who chose the same palette still differ, and the shader's pattern numbers.
+const FASHION_TINT := {"commoner": 0.18, "noble": 0.1, "guard": 0.08, "bonded": 0.0}
+const PATTERNS := {"plain": 0.0, "stripes": 1.0, "hem": 2.0, "checks": 3.0, "sash": 4.0}
+const GOLD := Color(0.98, 0.8, 0.36)
 
 static var _materials: Dictionary = {} ## skin name -> ShaderMaterial
 static var _library: AnimationLibrary
 static var _tree: AnimationNodeBlendTree
+static var _accessory_meshes: Dictionary = {} ## accessory part -> its mesh, shared by every figure
 
 
 static func skin_name(face: String, narrow_eyes: bool, beard: bool) -> String:
@@ -191,6 +197,9 @@ static func make(looks: Dictionary) -> Node3D:
 	mesh.set_instance_shader_parameter("tunic", looks["tunic"])
 	mesh.set_instance_shader_parameter("hair", looks["hair"])
 	mesh.set_instance_shader_parameter("skin_tone", looks["skin_tone"])
+	if looks.has("pattern"):
+		mesh.set_instance_shader_parameter("trim", looks["trim"])
+		mesh.set_instance_shader_parameter("pattern", PATTERNS.get(looks["pattern"], 0.0))
 	var head_scale := lerpf(CHILD_HEAD_SCALE + 0.15, HEAD_SCALE, clampf(inverse_lerp(0.32, 1.0, grown), 0.0, 1.0)) if child else HEAD_SCALE
 	var pose := _pose(looks, head_scale)
 	skeleton.add_child(pose)
@@ -216,6 +225,7 @@ static func make(looks: Dictionary) -> Node3D:
 		_add_circlet(head, 0.016)
 	if looks.get("noble", false):
 		_add_cloak(skeleton, looks["tunic"])
+	_add_accessory(head, String(looks.get("accessory", "none")), looks)
 	return villager
 
 
@@ -232,6 +242,34 @@ static func dress(looks: Dictionary, status: String) -> Dictionary:
 	return looks
 
 
+## Dresses a figure in its tribe's fashion (StyleKind's "fashion" spec) for its class: "commoner",
+## "noble", "bonded" or "guard". Commoners wear the tribe's cloth, pattern and accessory; nobles
+## their own finer color with a gold hem, the circlet and the cloak; the bonded plain drab; guards
+## their uniform color with a sash in the trim. Without a fashion, dress() as before.
+static func wear(looks: Dictionary, fashion: Dictionary, cls: String, tint: Color) -> Dictionary:
+	if fashion.is_empty():
+		return dress(looks, cls if cls in ["noble", "bonded"] else "")
+	looks["tunic"] = ArtPalette.color(int(fashion.get(cls, 0))).lerp(tint, float(FASHION_TINT.get(cls, 0.0)))
+	looks["trim"] = ArtPalette.color(int(fashion.get("trim", 17)))
+	var pattern := String(fashion.get("pattern", "plain"))
+	var accessory := String(fashion.get("accessory", "none"))
+	match cls:
+		"noble":
+			looks["noble"] = true
+			looks["trim"] = GOLD
+			pattern = pattern if pattern != "plain" else "hem"
+			accessory = "scarf" if accessory == "scarf" else "none"
+		"bonded":
+			pattern = "plain"
+			accessory = "none"
+		"guard":
+			pattern = "sash"
+			accessory = "none"
+	looks["pattern"] = pattern
+	looks["accessory"] = "none" if looks.get("child", false) or looks.get("chief", false) else accessory
+	return looks
+
+
 ## Headgear for a trade, worn whenever they have the job: "helmet" (guards: a metal cap with a
 ## crest in the tribe's color), "cap" (officials: a dark felt cap), or "" for none.
 static func set_headgear(villager: Node3D, kind: String, metal: Color, crest: Color) -> void:
@@ -239,6 +277,10 @@ static func set_headgear(villager: Node3D, kind: String, metal: Color, crest: Co
 		return
 	villager.set_meta("headgear", kind)
 	var head := villager.get_meta("head") as Node3D
+	# A hat, hood or headband comes off under a helmet or cap; a scarf stays.
+	var accessory := head.get_node_or_null("Accessory") as Node3D
+	if accessory:
+		accessory.visible = kind.is_empty() or bool(accessory.get_meta("neck", false))
 	var old := head.get_node_or_null("Headgear")
 	if old:
 		old.queue_free()
@@ -615,6 +657,81 @@ static func _add_hair(head: Node3D, style: String, color: Color) -> void:
 				head.add_child(_hair_part(_sphere(0.028), material, Vector3(0.0, 0.1 - i * 0.045, -0.085 - i * 0.008)))
 		"topknot":
 			head.add_child(_hair_part(_sphere(0.035), material, Vector3(0.0, 0.185, -0.02)))
+
+
+## What a tribe's fashion puts on ordinary people: "headband" (in the trim), "hat" (felt, banded
+## in the trim), "hood" (in the tunic's color), "scarf" (round the neck, in the trim), "feather"
+## (one, in the trim, from a leather band) or "none". Meshes are shared; materials by color.
+static func _add_accessory(head: Node3D, kind: String, looks: Dictionary) -> void:
+	if kind == "none" or kind.is_empty():
+		return
+	if _accessory_meshes.is_empty():
+		_accessory_meshes = {
+			"band": _ring(0.075, 0.073, 0.02), "brim": _ring(0.13, 0.13, 0.012), "crown": _ring(0.068, 0.076, 0.065),
+			"hood": _hood(), "scarf": _ring(0.062, 0.07, 0.045), "tail": _box(Vector3(0.04, 0.09, 0.015)), "vane": _vane(),
+		}
+	var trim := ToonMaterials.get_material(looks.get("trim", GOLD), 0.006)
+	var gear := Node3D.new()
+	gear.name = "Accessory"
+	match kind:
+		"headband":
+			gear.add_child(_hair_part(_accessory_meshes["band"], trim, Vector3(0.0, 0.125, -0.005)))
+		"hat":
+			var felt := ToonMaterials.get_material((looks["tunic"] as Color).darkened(0.35), 0.006)
+			gear.add_child(_hair_part(_accessory_meshes["brim"], felt, Vector3(0.0, 0.16, -0.005)))
+			gear.add_child(_hair_part(_accessory_meshes["crown"], felt, Vector3(0.0, 0.198, -0.005)))
+			gear.add_child(_hair_part(_accessory_meshes["band"], trim, Vector3(0.0, 0.175, -0.005), Vector3(0.95, 0.9, 0.95)))
+		"hood":
+			var cloth := ToonMaterials.get_material((looks["tunic"] as Color).darkened(0.1), 0.006)
+			gear.add_child(_hair_part(_accessory_meshes["hood"], cloth, Vector3(0.0, 0.1, -0.018), Vector3(1.08, 1.15, 1.15)))
+		"scarf":
+			gear.set_meta("neck", true)
+			gear.add_child(_hair_part(_accessory_meshes["scarf"], trim, Vector3(0.0, -0.005, 0.0)))
+			var tail := _hair_part(_accessory_meshes["tail"], trim, Vector3(0.025, -0.05, 0.06))
+			tail.rotation.x = -0.3
+			gear.add_child(tail)
+		"feather":
+			var leather := ToonMaterials.get_material(Color(0.42, 0.27, 0.19), 0.006)
+			gear.add_child(_hair_part(_accessory_meshes["band"], leather, Vector3(0.0, 0.125, -0.005)))
+			var feather := _hair_part(_accessory_meshes["vane"], trim, Vector3(0.03, 0.19, -0.06), Vector3(1.0, 1.0, 0.35))
+			feather.rotation.z = -0.3
+			gear.add_child(feather)
+	head.add_child(gear)
+
+
+static func _ring(top: float, bottom: float, height: float) -> CylinderMesh:
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = top
+	mesh.bottom_radius = bottom
+	mesh.height = height
+	mesh.radial_segments = 10
+	mesh.rings = 1
+	return mesh
+
+
+static func _hood() -> SphereMesh:
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.09
+	mesh.height = 0.09
+	mesh.is_hemisphere = true
+	mesh.radial_segments = 10
+	mesh.rings = 3
+	return mesh
+
+
+static func _box(size: Vector3) -> BoxMesh:
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	return mesh
+
+
+static func _vane() -> SphereMesh:
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.022
+	mesh.height = 0.13
+	mesh.radial_segments = 6
+	mesh.rings = 3
+	return mesh
 
 
 ## A leather band with three feathers.
