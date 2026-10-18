@@ -76,6 +76,7 @@ Godot/
 | Dilemma cards and narrative events | Medium | 5–15 |
 | Naming, flavor text, citizen thoughts | Small (Haiku class) and batched | 20–50 |
 | Turning free-text player "whispers" into effects | Medium | on demand, rate-limited |
+| Style specs, banners, posters and slogans (see M3.5) | Small, prefetched | 3–8 |
 
 **It must work offline.** `offline_templates.gd` is a full fallback built from hand-written templates, Markov name generators, and rule-based events. The game must stay playable with no network and no key. This also makes CI and automated tests possible.
 
@@ -85,7 +86,7 @@ The game ships **without any AI access**. The player plugs in their own, in an *
 
 | Provider type | Examples | How it connects | Notes |
 |---|---|---|---|
-| **API key** | Anthropic, OpenAI, Gemini, OpenRouter | `HTTPRequest` / `HTTPClient` with streaming (SSE) | The key is saved in `user://` with `ConfigFile.save_encrypted_pass`, never in logs or saves. A "Test connection" button checks it |
+| **API key** | Anthropic, OpenAI, Gemini, OpenRouter | `HTTPRequest` / `HTTPClient` with streaming (SSE) | The key is saved in `user://` with `ConfigFile.save_encrypted_pass` (a machine-bound passphrase), never in logs or saves. A "Test connection" button checks it |
 | **Local model** | Ollama, LM Studio, llama.cpp server | The same OpenAI-compatible HTTP adapter pointed at `localhost` | Free and private. Small models need stricter schemas and shorter prompts, so each tier has a "small-model prompt" variant |
 | **Local CLI** | Claude Code (`claude -p --output-format json`), Codex (`codex exec`), Gemini CLI | `OS.execute_with_pipe()` runs it in the background; the game parses stdout | Uses the player's existing subscription. The game finds CLIs on PATH, warns about latency, and never passes shell-interpolated strings (args go in as an array) |
 | **Offline** | Built-in templates | No AI at all | Always available, and used when anything else fails |
@@ -156,7 +157,7 @@ There is no fixed "dark" or "light" setting. The world's tone comes from **how y
 
 **Hard rule:** pick an art bible early (a palette, line weight, and shading steps for each era) and test every asset against it. A consistent look matters more than raw detail.
 
-**AI-generated art:** use it at most for concept exploration and reference. Final shipped assets should be drawn (or heavily painted over) so the style stays coherent and you avoid licensing risk.
+**AI-generated art:** use it at most for concept exploration and reference. Final shipped assets should be drawn (or heavily painted over) so the style stays coherent and you avoid licensing risk. This is different from **AI-authored assets** (M3.5): there the AI writes a style spec, a vector emblem or a slogan, and the game builds the asset from its own kit and palette, so the art bible still holds.
 
 ---
 
@@ -165,7 +166,8 @@ There is no fixed "dark" or "light" setting. The world's tone comes from **how y
 Each milestone ends with a **playable build** and a clear exit criterion. Time estimates assume a solo developer or a very small team working part-time. Adjust them freely.
 
 ### M0 — Foundations (1–2 weeks)
-- [ ] Repo hygiene: Git LFS for art (when the first art lands), CI running the headless tests
+- [x] CI running the headless tests (GitHub Actions on Linux, `.github/workflows/tests.yml`)
+- [ ] Repo hygiene: Git LFS for art (the Kenney `.glb` props and textures have landed)
 - [x] Folder structure from §2
 - [x] `WorldState` + `TickScheduler` + seeded `SimRng` with save/load (JSON)
 - [x] Typed GDScript enforced: untyped declarations are errors
@@ -183,7 +185,7 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 - [x] Palette and lighting for Era 3, written down in `docs/ART_BIBLE.md`
 - [x] Low-poly 3D villagers (Kenney's CC0 animated character with painted tribal skins): women and men, children, elders who grey and stoop, five ancestries, slim to stout builds, long hair, buns, braids and beards; chiefs wear a feathered headdress
 - [x] Trees, undergrowth, rocks, tents and campfires from Kenney's CC0 Nature and Survival kits, restyled to the toon palette with ink outlines; a painted brush-stroke texture on every toon surface
-- [ ] A real walk cycle (the walk is a slowed run blended with idle) and level of detail for villagers far from the camera
+- [ ] A real walk cycle (the walk is a slowed run blended with idle), work and sitting clips, and level of detail for villagers far from the camera (about 65 fps with 170 villagers today)
 
 **Exit:** one screenshot that looks good enough to post publicly.
 
@@ -191,26 +193,74 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 *Prove the whole loop on one era before building the other five.*
 - [x] Systems: food, rain and droughts, population growth, famine, tribe splits (first-pass numbers)
 - [x] Systems: water sources (a pond and two springs that rain fills and drinking drains), needs (food, water, room, safety → mood), relationships between tribes, wars and merging
-- [x] Citizens with names, ages and traits (one per figure; the oldest is chief and their traits steer the tribe), and an inspector panel with AI-written thoughts (small tier, offline fallback)
-- [x] **Oracle prophecy** at the start of each cycle → tracked as a measurable condition, checked yearly by the sim
-- [x] 4 miracles (Rain, Harvest, Drought, Plague), Influence economy, kindness → tone of the AI's writing
-- [x] AI-generated dilemma cards with sim-validated effects (with offline fallback), every ~20 years or sooner after drama
+- [x] **Every person simulated** (`docs/LIFE_SIM.md`), one day per tick: DNA (two copies of 14 genes, inherited and mutating), birth, growing up, apprenticeship, coming of age, work, love, marriage, children, old age and death with a cause; life stories, family trees, the dead remembered
+- [x] Relationships between people: friendships and rivalries, chemistry, courtship, proposals and refusals, marriages across tribes, arranged matches, separations, fights, widows, orphans taken in
+- [x] Jobs assigned by need with skills that grow over years; discoveries (stone tools, fishing, herbal lore, rites, pottery, weaving, carpentry, farming) open new jobs and buildings and spread between friends
+- [x] Village building: chiefs plan, builders build over weeks; tents, huts, longhouses, workshop, healer's hut, storehouse, shrine, fields, palisade; homes for households
+- [x] Tribes: chiefs chosen by respect, splits led by a restless young adult and their family and friends, raids, incidents, wars fought by named people, gifts, merges
+- [x] **Oracle prophecy** at the start of each cycle → tracked as a measurable condition (population, tribes, largest tribe, buildings, discoveries), checked monthly by the sim
+- [x] 5 miracles (Rain, Harvest, Drought, Plague that kills the frail first, Muse that inspires a discovery), Influence economy, kindness → tone of the AI's writing
+- [x] AI-generated dilemma cards with sim-validated effects (with offline fallback), every 4–8 years or sooner after drama
 - [x] End-of-prophecy **reveal + chronicle** screen: the AI explains what happened and why, citing the player's miracles
-- [x] Time controls (pause and three speeds), click a camp to choose a tribe
-- [x] First balance pass with a repeatable report (`Godot/tools/balance_report.gd`): a drought every ~20 years, about 3 miracles per prophecy, offline prophecies about 50/50. With the new systems, a 300-year run has about 6 wars, 3 merges and a dozen low-water spells
+- [x] Time controls (pause and four speeds, 2 to 60 days a second), click a camp to inspect and choose a tribe
+- [x] Every person drawn and going about their day: walking to real trees, rocks, bushes, shores and fields with the tool of their trade, carrying what they gathered home, acting out chats, quarrels and courtships, buried on the hill when they die
+- [x] Life feed, person panel (life, family, DNA, bonds, story), tribe panel, evolution chart, follow camera
+- [x] Balance pass with repeatable reports (`tools/balance_report.gd`, `tools/life_report.gd`): over 100 years about 40 people grow to about 125 in 3–4 tribes, with about 290 births, 65 marriages, a full tech tree, 1–2 wars and a handful of famines and fevers
 
 **Exit:** 5 playtesters each finish a 30–45 min session, can explain *why* their prophecy came true or broke, and at least 3 of them want to play again.
 
+### M2.5 — Living history: procedural islands, ages and societies
+*Make every run its own story: a different island, a long climb through the ages, and a society that can end free or in a dystopia. See `docs/SOCIETY.md`.*
+- [x] Procedural islands: biome (meadow, steppe, jungle, taiga, highland), climate, ores, a disaster each island is prone to, shape and waters, and 1 to 3 founding peoples with their own cultures
+- [x] Five ages within one run: First Fires, Bronze, Iron, Smoke & Steam, Wired (33 techs; missing ores slow an island down), with new jobs (miner, smith, scholar, merchant, guard, official, factory worker) and buildings (denser homes; mines, schools, markets, temples, factories; the great house, watchtowers, prisons, statues and surveillance masts that power builds)
+- [x] Emergent society: culture on four axes, wealth and inheritance, nobles and the bonded, loyalty and dissidents, five factions, a government named after whoever is on top, and 29 laws that rulers want, factions press for, councils block, revolutions tear up
+- [x] Crisis chains: protests, crackdowns, uprisings, revolutions, coups, the merchants buying the state, prophets and schisms, wars of succession, arrests and exile, vassals, revolts and annexations
+- [x] Destinies: the Panopticon, the Gilded Cage, the Perfect Bloodline, the Holy Order, the Iron Fist, the Free Commons or Ashes, with the Oracle's last chapter
+- [x] Oracle: prophecies about ages, dystopia, inequality and vassals; dilemmas that pass or strike down laws and move unrest and legitimacy; political miracles (smite, awaken, sanctify)
+- [x] Automated balance pass (`tools/society_report.sh`, 18 islands × 400 years × five bot gods, see `docs/SOCIETY.md` → Balance): untouched islands reach the Wired Age around year 214; the Free Commons and five dystopias all occur, none above 17%; a kind god raises the Free Commons from 11% to 33% and a meddling or sanctifying god darkens the island, so the god bends history without dictating it
+- [ ] Balance pass with playtesters: pacing of the ages, how often dystopias win, how much the god can bend it
+- [ ] Plague is too strong for small tribes (it kills about a quarter of a tribe, and a bot casting it whenever it can wipes out most islands): scale it to tribe size or raise its cost
+- [ ] Era-specific camera scales and art sets (M4/M5) on top of the ages
+
 ### M3 — The AI Director, done right (3–4 weeks)
-- [ ] Event pacing ("drama manager"): tension curve, cooldowns, no event spam
-- [ ] Prompt library with versioning + golden tests (saved state → expected schema and constraints)
-- [ ] Response cache, batching, streaming text for chronicles
-- [ ] Cost guardrails: per-session budget, model-tier routing, graceful drop to offline
-- [ ] Disposition tracking → tone level (1–5) in prompts; the hard content ceiling is enforced on the output; Gentle Mode
-- [ ] Full provider lineup: OpenAI-compatible adapter (OpenAI, Ollama, LM Studio, OpenRouter), Gemini, Codex CLI, Gemini CLI
-- [ ] AI Settings screen: per-tier routing, test connection, capability probe, usage and cost meter
+- [x] Event pacing ("drama manager", `game/drama_manager.gd`): tension fed by weighted events with a 1.5-year half-life, a target curve that builds toward each prophecy's deadline and rests after a reveal, hard and per-category cooldowns (16–19 dilemmas a century, never closer than 2.5 years), a pacing hint in the prophecy and dilemma prompts; bursts of small events merged and rate-limited in the life feed and over the camps (`game/event_pacer.gd`)
+- [x] Prompt library with versioning (`prompt_library/manifest.json`: version, tier, schema and size budget per task; old versions stay loadable) + golden tests (saved states → every task's real request, placeholders, size budget, offline and recorded replies pass schema, ceiling and sim)
+- [x] Response cache (LRU, saved in `user://ai_cache/`), identical in-flight requests share one call, chronicles and the last chapter stream into the reveal as they are written (SSE for Anthropic and OpenAI-compatible)
+- [ ] Batched thoughts (several people in one small call)
+- [x] Cost guardrails: per-session budget ($0.10 and 200 calls by default) that drops each task a tier at 75% and goes offline when spent, one retry then offline, a circuit breaker per provider
+- [x] Disposition tracking (mercy, wrath and how often the god meddles, saved) → tone level (1–5) and a disposition line in prompts; the hard content ceiling is enforced on every reply string (`ContentGuard`); Gentle Mode caps tone at 2 with a stricter list
+- [x] Full provider lineup: OpenAI-compatible adapter (OpenAI, Ollama, LM Studio, OpenRouter; strict schema or JSON mode), Gemini, Codex CLI, Gemini CLI (only Codex and Claude Code checked live so far)
+- [x] AI Settings screen (press A): provider and keys (saved encrypted), per-tier routing, test connection with the capability probe, local model list, budget, Gentle Mode, usage and cost meter; applies to the running game
 
 **Exit:** a full Era Run works the same on (a) a cloud API key, (b) a 7–8B local model in Ollama, (c) Claude Code CLI, and (d) offline. An average cloud-key session costs the player less than a target we set (e.g. < $0.05), and the game never breaks when the provider fails mid-game.
+
+**Status:** offline (d) runs end to end, and a failing provider falls back to offline mid-game in tests; Claude Code (c) passed the live prophecy and chronicle checks. Still to do: full Era Runs on (a) a cloud key, (b) a local 7–8B model in Ollama and (c), and measuring the average session cost.
+
+### M3.5 — AI-authored assets (3–4 weeks)
+*The player's AI writes the style and the words; the game builds the art. Every provider we support is a text model, so it can't paint a texture or model a mesh, but it can write a structured spec, simple SVG and lore-true text. Same golden rule as the Oracle: the AI proposes, the game validates, clamps and builds.*
+
+```
+sim facts ──► AI writes a spec ──► validate & clamp ──► engine builds it ──► saved with the world
+(biome, culture,   (JSON or SVG,      (palette indices,   (BuildingArt,       (reloads look the
+ age, government,   small model)       part limits, safe   villager skins,     same, and work
+ laws, dystopia)                       SVG subset)         banner textures)    offline)
+```
+
+- [ ] **Asset Director** (`ai/asset_director.gd`): asks for a spec when a tribe is founded and whenever it enters a new age, changes government or meets its destiny; prefetched while the player plays; one small-model call each (20 to 40 per run)
+- [ ] Specs are saved in `WorldState`, so a world looks the same after a reload and with the AI unplugged; every spec has a seeded offline generator with the same schema, so offline worlds vary too
+- [ ] The AI never picks raw colors or geometry: it picks art-bible palette indices and modules from a grammar, and the builder clamps sizes and part counts
+- [ ] **Architectural style per tribe and age**: a grammar of roofs (cone, gable, dome, stepped, flat), walls, ornament, towers and proportions, fed to `BuildingArt`. The village shows the society: a Theocracy grows spires, a Total State goes grey and brutalist, a Free Commons stays colorful
+- [ ] **Heraldry**: a banner emblem and motto per ruling house, as SVG from a whitelisted subset (basic shapes and paths, palette colors only, no external references), rasterized with `Image.load_svg_from_string`. Revolutions and coups replace the banner
+- [ ] **Propaganda posters and slogans** that go up as dystopian laws pass, on walls, broadcast towers and surveillance masts; the Oracle can quote them
+- [ ] **Fashion by culture and class**: clothing palettes, patterns and accessories for the villager skins; finer for nobles, drab for the bonded, uniforms for guards under a junta
+- [ ] **A people's own language**: a phonology per founding people that feeds `NameGen`, with dialects drifting when tribes split
+- [ ] **Laws and places in their own words**: local names for laws and buildings in the feed and panels ("The Watchful Eye of Kolu" for the surveillance network); the sim keeps the ids
+- [ ] **Monuments**: statue pose presets, plinth inscriptions and temple iconography from rulers' vanity and prophets' doctrines
+- [ ] Later, with M5: the illustrated "Book of Your Planet", laid out by the AI around screenshots, heraldry and chronicles
+
+Not planned: image-model textures (they break style coherence and add licensing and disclosure questions; maybe as an opt-in extra), AI-written raw meshes (a module grammar gives creative control without wrecking the art bible), and 3D-generation services (slow, costly per asset, and off-style).
+
+**Exit:** two runs on the same island seed with different providers, and one offline, all look coherent with the art bible, and their tribes, regimes and endings are visibly different from each other. Asset calls cost under a tenth of a session's AI budget, and a failed call never leaves a building unbuilt.
 
 ### M4 — Scale Up: Eras 2 & 4 (8–10 weeks)
 - [ ] Era 4 Kingdoms: cities that grow building by building, trade routes, rulers with AI personalities, wars
