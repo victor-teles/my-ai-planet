@@ -1,7 +1,7 @@
 class_name AnimalSystem
 extends SimSystem
 ## Once a month the wild animals lose condition, die, breed and are hunted by wolves and big cats.
-## Every day, hunters eat what they kill. The system keeps no state of its own.
+## Every day, hunters are paid by how much of the seeded herd is still alive. The system keeps no state of its own.
 
 const CAP := 240 ## births stop here; hunting and predators can go below it
 const ADULT_YEARS := 1
@@ -17,14 +17,10 @@ const FERTILITY_BASE := 0.2
 const FERTILITY_SPAN := 0.75
 ## A still, bold animal is an easy shot. A fast wary one is harder. Division, not pow:
 ## the chance has to be the same on every platform.
-## A carcass is about 24 meals before season and the biome hunt rate. A normal month stores
-## only sustainable_hunt_work as hunter work; labor above that forages. Uncapped work can wipe the herd.
+## Census of seed 42: winter forage cannot replace the 2.9 rate, and a carcass of a few dozen meals cannot either.
 const HUNT_EASY := 0.9
-const HUNT_DIV := 3.0
+const HUNT_DIV := 899.0
 const HUNT_FLOOR := 0.0005
-const MEAT_SCALE := 24.0
-## Standing prey a herd can lose in a year and still replace. The only sustainability lever.
-const HUNT_OFFTAKE := 0.20
 ## A prey this fast, or faster, gets away. Wolves clear the slow, not the whole herd.
 const SLOW_PREY := 0.22
 const HUNTERS: Array[String] = ["wolf", "cat"]
@@ -62,46 +58,42 @@ static func seed(state: WorldState) -> void:
 			var condition := state.rng.randi_range(70, 100)
 			var genome := Genetics.founder(state.rng, 0, table)
 			state.add_animal(species_id, sex, state.tick - age, genome, condition)
+	state.animal_prey_seeded = prey_count(state)
 
 
-## Meat added to the tribe this day. No prey means no food.
-## Work below 1 still hunts: one attempt with probability equal to that fraction, then its catch weight.
-## Weights add up to a kill, so the meat arrives steadily instead of in a lucky streak.
+## Food for this tribe today, paid once from the herd that was alive before any kill in this call.
+## An empty valley pays nothing and keeps no credit. The death is not a second pile of meat.
 static func meat_from_hunt(state: WorldState, tribe_index: int, hunter_work: float) -> float:
-	var gained := 0.0
 	var prey := _hunt_target(state)
 	if prey == -1:
 		state.tribe_hunt_credit[tribe_index] = 0.0
-	elif hunter_work > 0.0:
-		var attempts := int(floorf(hunter_work))
-		var fraction := hunter_work - float(attempts)
-		if fraction > 0.0 and state.rng.chance(fraction):
-			attempts += 1
-		if attempts > 0:
-			var table := Species.animal_table()
-			var season := EconomySystem.HUNT_SEASON[state.month()]
-			var hunt_rate := WorldGen.rate(state.world, "hunt")
-			var tribe := state.tribe_names[tribe_index]
-			var evade := Genetics.express(state.animal_genomes[prey], "speed", table) + Genetics.express(state.animal_genomes[prey], "wariness", table)
-			var credit := state.tribe_hunt_credit[tribe_index] + float(attempts) * _hunt_chance(evade)
-			while credit >= 1.0 and prey != -1:
-				credit -= 1.0
-				var genome := state.animal_genomes[prey]
-				var species_id := state.animal_species[prey]
-				var meat := _meat(genome) * season * hunt_rate
-				var injured := false
-				var danger := float(Species.get_species(species_id).get("danger", 0.0))
-				if danger >= 0.4:
-					injured = state.rng.chance(danger * 0.15)
-				state.remove_animal(prey)
-				gained += meat
-				var data := {"species": species_id, "tribe": tribe, "meat": str(snappedf(meat, WorldState.FLOAT_STEP))}
-				if injured:
-					data["injured"] = true
-				state.log_event("hunt", data)
-				prey = _hunt_target(state)
-			# An empty valley does not store the next kill.
-			state.tribe_hunt_credit[tribe_index] = snappedf(credit, WorldState.FLOAT_STEP) if prey != -1 else 0.0
+		_note_wipes(state)
+		return 0.0
+	var gained := 0.0
+	if hunter_work > 0.0:
+		var season := EconomySystem.HUNT_SEASON[state.month()]
+		var hunt_rate := WorldGen.rate(state.world, "hunt")
+		gained = hunter_work * EconomySystem.RATES["hunter"] * season * hunt_rate * hunt_fullness(state)
+		var table := Species.animal_table()
+		var genome := state.animal_genomes[prey]
+		var evade := Genetics.express(genome, "speed", table) + Genetics.express(genome, "wariness", table)
+		var credit := state.tribe_hunt_credit[tribe_index] + hunter_work * _hunt_chance(evade)
+		var tribe := state.tribe_names[tribe_index]
+		while credit >= 1.0 and prey != -1:
+			credit -= 1.0
+			var species_id := state.animal_species[prey]
+			var injured := false
+			var danger := float(Species.get_species(species_id).get("danger", 0.0))
+			if danger >= 0.4:
+				injured = state.rng.chance(danger * 0.15)
+			state.remove_animal(prey)
+			var data := {"species": species_id, "tribe": tribe}
+			if injured:
+				data["injured"] = true
+			state.log_event("hunt", data)
+			prey = _hunt_target(state)
+		# An empty valley does not store the next kill.
+		state.tribe_hunt_credit[tribe_index] = snappedf(credit, WorldState.FLOAT_STEP) if prey != -1 else 0.0
 	state.tribe_food[tribe_index] += gained
 	_note_wipes(state)
 	return gained
@@ -130,16 +122,14 @@ static func prey_count(state: WorldState) -> int:
 	return count
 
 
-## Hunter-days that take about HUNT_OFFTAKE of this herd over a year, at a typical animal's
-## catch chance. No roll and no writes. Zero prey means no hunt work.
-static func sustainable_hunt_work(prey: int) -> float:
+## Living prey over the count at seeding. No prey is empty. A hand-built herd with no seeded count is full.
+static func hunt_fullness(state: WorldState) -> float:
+	var prey := prey_count(state)
 	if prey <= 0:
 		return 0.0
-	return (float(prey) * HUNT_OFFTAKE / float(WorldState.DAYS_PER_YEAR)) / _hunt_chance(1.0)
-
-
-static func typical_hunt_chance() -> float:
-	return _hunt_chance(1.0)
+	if state.animal_prey_seeded <= 0:
+		return 1.0
+	return clampf(float(prey) / float(state.animal_prey_seeded), 0.0, 1.0)
 
 
 static func _predator_count(state: WorldState) -> int:
@@ -148,10 +138,6 @@ static func _predator_count(state: WorldState) -> int:
 		if species_id in HUNTERS:
 			count += 1
 	return count
-
-
-static func _meat(genome: PackedByteArray) -> float:
-	return MEAT_SCALE * (0.5 + Genetics.express(genome, "size", Species.animal_table()))
 
 
 static func _hunt_chance(evade: float) -> float:

@@ -113,56 +113,61 @@ func test_overhunt_can_wipe_a_prey_species() -> void:
 func test_a_kill_adds_that_animals_meat() -> void:
 	var state := _one_slow_deer()
 	var deer := state.animal_ids[0]
-	var genome := state.animal_genomes[0]
-	var expected := AnimalSystem.MEAT_SCALE * (0.5 + Genetics.express(genome, "size", Species.animal_table()))
-	expected *= EconomySystem.HUNT_SEASON[state.month()]
-	expected *= WorldGen.rate(state.world, "hunt")
+	var work := ceili(1.0 / AnimalSystem._hunt_chance(0.0))
+	var expected := float(work) * EconomySystem.RATES["hunter"] * EconomySystem.HUNT_SEASON[state.month()] * WorldGen.rate(state.world, "hunt")
 	var before := state.tribe_food[0]
-	var meat := AnimalSystem.meat_from_hunt(state, 0, 40.0)
+	var meat := AnimalSystem.meat_from_hunt(state, 0, float(work))
 	assert_eq(meat, expected)
 	assert_eq(state.tribe_food[0], before + expected)
 	assert_true(not _has_id(state, deer))
 	assert_eq(_prey_total(state), 0)
-	# The economy's own day, with the roll forced by a bold slow deer and many attempts.
+	# The economy's own day, with that same work written into the tribe.
 	var hunted := _one_slow_deer()
 	var target := hunted.animal_ids[0]
-	hunted.tribe_work[0]["hunter"] = 40.0
+	hunted.tribe_work[0]["hunter"] = float(work)
 	EconomySystem.new().update(hunted)
 	assert_true(not _has_id(hunted, target), "the economy's hunt removes the deer")
 
 
-## A fifth of the standing prey in a year, at a typical animal's catch chance. No herd, no work.
-func test_sustainable_hunt_work_is_a_fifth_of_standing_prey() -> void:
-	assert_eq(AnimalSystem.sustainable_hunt_work(0), 0.0)
-	var chance := AnimalSystem.typical_hunt_chance()
-	assert_true(chance >= 0.15 and chance <= 0.30, "evade 1 chance %s" % chance)
-	assert_true(AnimalSystem._hunt_chance(0.0) >= 0.70 and AnimalSystem._hunt_chance(0.0) <= AnimalSystem.HUNT_EASY, "evade 0")
+## Evade 1 is a rare shot. A half-full seeded herd pays half the daily rate.
+func test_hunt_chance_is_small_and_a_half_herd_pays_half() -> void:
+	var chance := AnimalSystem._hunt_chance(1.0)
+	assert_true(chance >= 0.0008 and chance <= 0.0012, "evade 1 chance %s" % chance)
+	assert_eq(AnimalSystem._hunt_chance(0.0), AnimalSystem.HUNT_EASY)
 	assert_true(AnimalSystem._hunt_chance(2.0) < chance, "a fast wary animal is harder")
-	var kills := AnimalSystem.sustainable_hunt_work(18) * chance * float(WorldState.DAYS_PER_YEAR)
-	assert_true(kills >= 3.5 and kills <= 3.7, "expected kills per year %s" % kills)
+	var state := Simulation.create(42).state
+	var i := state.animal_ids.size() - 1
+	while i >= 0 and AnimalSystem.prey_count(state) > 9:
+		if _is_prey(state, i):
+			state.remove_animal(i)
+		i -= 1
+	state.animal_prey_seeded = 18
+	assert_eq(AnimalSystem.prey_count(state), 9)
+	assert_eq(AnimalSystem.hunt_fullness(state), 0.5)
+	var before := state.tribe_food[0]
+	var meat := AnimalSystem.meat_from_hunt(state, 0, 4.0)
+	var expected := 4.0 * EconomySystem.RATES["hunter"] * EconomySystem.HUNT_SEASON[state.month()] * WorldGen.rate(state.world, "hunt") * 0.5
+	assert_eq(meat, expected)
+	assert_eq(state.tribe_food[0], before + expected)
 
 
-## Hunt work set by hand is not capped. The sustainable rate, held for a season, leaves every prey species alive.
-func test_forced_hunt_above_the_cap_kills_more_than_sustainable_work() -> void:
-	var forced := Simulation.create(42).state
-	var capped := Simulation.create(42).state
-	var before := _prey_counts(forced)
-	var start := _prey_total(forced)
-	var cap := AnimalSystem.sustainable_hunt_work(start)
+## More hunter-days remove more animals. A light hunt leaves the herd alive.
+func test_more_hunt_work_removes_more_prey() -> void:
+	var heavy := Simulation.create(42).state
+	var light := Simulation.create(42).state
+	var start := _prey_total(heavy)
 	for _day: int in 90:
-		AnimalSystem.meat_from_hunt(forced, 0, 1.0)
-		forced.tick += 1
-		AnimalSystem.meat_from_hunt(capped, 0, cap)
-		capped.tick += 1
-	var forced_left := _prey_total(forced)
-	var capped_left := _prey_total(capped)
-	assert_true(start - forced_left > start - capped_left, "uncapped removes more prey: %d vs %d from %d" % [start - forced_left, start - capped_left, start])
-	var after := _prey_counts(capped)
-	for species_id: String in before:
-		assert_true(int(after.get(species_id, 0)) > 0, "%s hit 0 under the cap: %s" % [species_id, str(after)])
+		AnimalSystem.meat_from_hunt(heavy, 0, 400.0)
+		heavy.tick += 1
+		AnimalSystem.meat_from_hunt(light, 0, 1.0)
+		light.tick += 1
+	var heavy_left := _prey_total(heavy)
+	var light_left := _prey_total(light)
+	assert_true(start - heavy_left > start - light_left, "heavier work removes more prey: %d vs %d from %d" % [start - heavy_left, start - light_left, start])
+	assert_true(light_left > 0, "a light hunt left no prey: %d" % light_left)
 
 
-## Seed 42, year 5: pop 0, prey 35 (horse 15, goat 20), food eaten at least 11659.2, none wiped.
+## Seed 42, year 5: pop 57, prey 17 (horse 10, goat 7), food eaten at least 72623.7, none wiped.
 ## Food eaten is a lower bound: the stock at each dawn, before that day's gathering.
 func test_seed_42_year_5_still_has_prey_and_food() -> void:
 	var sim := Simulation.create(42)
@@ -195,6 +200,7 @@ func _one_slow_deer() -> WorldState:
 	genome[size_at] = 180
 	genome[size_at + 1] = 180
 	state.add_animal("deer", "f", state.tick, genome, 80)
+	state.animal_prey_seeded = 1
 	return state
 
 

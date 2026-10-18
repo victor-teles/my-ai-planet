@@ -124,6 +124,8 @@ var next_animal_id: int = ANIMAL_ID_START
 ## Species seeded for this biome, and those already logged as gone. Empty on a save from before animals.
 var animal_seeded := PackedStringArray()
 var animal_wiped := PackedStringArray()
+## Prey alive at the end of seeding. A save from before this field loads 0.
+var animal_prey_seeded: int = 0
 var _index_dirty := true
 
 ## The dead, by str(id): {"name", "family", "sex", "born", "died", "cause", "tribe", "mother",
@@ -1130,6 +1132,7 @@ func to_dict() -> Dictionary:
 		"next_animal_id": next_animal_id,
 		"animal_seeded": Array(animal_seeded),
 		"animal_wiped": Array(animal_wiped),
+		"animal_prey_seeded": animal_prey_seeded,
 		"events": events,
 		"next_event_id": next_event_id,
 		"gene_history": gene_history,
@@ -1263,6 +1266,7 @@ static func from_dict(data: Dictionary) -> WorldState:
 		state.next_animal_id = int(data["next_animal_id"])
 		state.animal_seeded = PackedStringArray(data.get("animal_seeded", []))
 		state.animal_wiped = PackedStringArray(data.get("animal_wiped", []))
+		state.animal_prey_seeded = int(data.get("animal_prey_seeded", 0))
 	state.next_event_id = int(data["next_event_id"])
 	state.influence = float(data["influence"])
 	state.kindness = int(data["kindness"])

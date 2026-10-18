@@ -2,7 +2,7 @@ extends TestCase
 
 ## Simulation.create(42) advanced 20 years, then state.checksum().
 ## 0ad2a1bee87b6235e5a44af2d0b165149d48145be66530e38dcd8387e5350437 was the world before animals.
-const CHECKSUM_SEED_42_YEAR_20 := "fed69778db2bb21a975fbfae30ce24edd272831570da51dd65f50be295989b75"
+const CHECKSUM_SEED_42_YEAR_20 := "1f202b2bb9756460eba2ef065ae2c1d626251119e2d1d1678134d216f956d60f"
 
 
 ## Captured before gene tables: Genetics.founder(SimRng.new(1), 0).
