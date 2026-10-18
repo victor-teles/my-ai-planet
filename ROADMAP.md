@@ -223,17 +223,28 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 - [ ] Era-specific camera scales and art sets (M4/M5) on top of the ages
 
 ### M2.6 — A living world: natural motion and animals with DNA (5–7 weeks)
-*Villagers move like people, not robots, and animals live by the same DNA rules as people. See `docs/LIVING_WORLD.md`.*
+*Villagers move like people, not robots, and animals live by the same DNA rules as people. See `docs/LIVING_WORLD.md`. Decisions locked 2026-10-18: retarget animations onto the Kenney rig, one genome per animal, hunters eat what they kill.*
 - [ ] Real animation set: Quaternius' CC0 Universal Animation Library retargeted onto the Kenney rig (walk, jog, carry, sit, kneel, chop, hammer, hoe, talk, mourn, play…), locomotion blended by real speed so feet don't slide, animation level of detail (300 villagers at 60 fps). Replaces M1's "real walk cycle" item
 - [ ] Steering shared with the animals: easing in and out, turn rates, separation, avoiding buildings, the fire and walls, village lanes with gates (A* on a small graph per camp)
 - [ ] A gait from the person: age, height, build, health, mood, traits and load set speed, stride and posture; per-walker drift so no two move in step
 - [ ] Intentions instead of random timers: a task queue that only urgent changes interrupt (no turning around at high speeds); work loops with a beginning, a middle and an end; groups at the fire, tag, look-at and idle details; reactions to births, deaths, rain, war and miracles; seasons change how people behave
 - [ ] Gene tables in `Genetics` (people unchanged, saves byte-identical), a species table by biome, and wild animals as individuals with two copies of 12 genes (size, speed, coat, horns, temper, wariness…)
-- [ ] `AnimalSystem`: forage, breeding seasons with herd sires, deaths from age, hunger, winter and predators (who take the slowest), real hunting that can wipe out a species, wolves following their prey
+- [ ] `AnimalSystem`: forage, breeding seasons with herd sires, deaths from age, hunger, winter and predators (who take the slowest), hunting whose meat is the animals killed (a normal camp hunts inside regrowth, 20% of standing prey a year, and the rest of a hunter's labor forages so food stays near the old balance; uncapped hunt work can wipe out a species), wolves following their prey
 - [ ] Taming and breeding: herders, pens, artificial selection shown in the evolution chart, dogs from wolves, draft animals and herds as wealth in the later ages
 - [ ] Animals drawn (Quaternius' CC0 animal packs, looks from genes) with herds that flock, graze, watch and flee, hunts acted out, and an animal panel; animal prophecies, dilemmas and the Blessing of the Herds
 
-**Exit:** follow any villager for a minute at any speed: they never walk through a house or a person, never turn around without a reason, and their feet don't slide. Same seed, same animals. Over 100 years wild herds survive a kind god but overhunting can end them, hunters' food stays within 10% of today's balance, and domestic herds visibly drift from wild ones.
+**Exit:** follow any villager for a minute at any speed: they never walk through a house or a person, never turn around without a reason, and their feet don't slide. Same seed, same animals. Over 100 years a kind god keeps the herds alive and hunter food within 10% of today's balance. Overhunting can end a species and then lose that meat. Domestic herds visibly drift from wild ones.
+
+### M2.7 — A screen you can read (2–3 weeks)
+*The simulation stays. The first minute teaches the loop, and the dashboards wait until someone asks. See `docs/INTERFACE.md`. Can run beside M2.6.*
+- [ ] The prophecy card leads with the plain goal, pauses time on each new prophecy, and teaches the loop once on a new world
+- [ ] Speed buttons say how long a year takes. The feed opens on the big turns
+- [ ] Feed, Genes, Society, and AI settings leave the top bar. The charts open from the person and tribe panels. AI settings open from the keys card. E, H, and A still work
+- [ ] Miracles split into Bless and Strike. Smite, Awaken, and Sanctify appear once a tribe has laws or reaches the Bronze Age
+- [ ] A person and a tribe open on a short card. Percentages, techs, laws, and allele grids stay one click down. DNA is renamed Blood
+- [ ] The Influence purse shows Kind, Harsh, or Unpredictable from the god's existing disposition
+
+**Exit:** after the opening and five minutes, a new player can say what the prophecy asks, how to cast a miracle on a tribe, and how fast a year passes. Shots in `docs/screenshots/`.
 
 ### M3 — The AI Director, done right (3–4 weeks)
 - [x] Event pacing ("drama manager", `game/drama_manager.gd`): tension fed by weighted events with a 1.5-year half-life, a target curve that builds toward each prophecy's deadline and rests after a reveal, hard and per-category cooldowns (16–19 dilemmas a century, never closer than 2.5 years), a pacing hint in the prophecy and dilemma prompts; bursts of small events merged and rate-limited in the life feed and over the camps (`game/event_pacer.gd`)
@@ -299,7 +310,7 @@ Not planned: image-model textures (they break style coherence and add licensing 
 
 ### M6 — Polish, Audio, Onboarding (6–8 weeks)
 - [ ] Adaptive music layers for each era; ambience that grows with the population
-- [ ] Tutorial given by the Oracle in its own voice
+- [ ] Tutorial given by the Oracle in its own voice: moved to M2.7 (the first prophecy card teaches the loop once)
 - [ ] Accessibility: text scaling, colorblind-safe palettes, an option to pause on every event
 - [ ] Performance: 10k+ simulated agents with level of detail (individuals up close, aggregate stats when zoomed out)
 - [ ] Localization pipeline (EN + PT-BR first)

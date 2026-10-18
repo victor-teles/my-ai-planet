@@ -23,6 +23,8 @@ const SAMPLES: Array[Dictionary] = [
 	{"type": "job", "data": {"tribe": "Oru", "id": 3, "name": "Lia", "job": "healer", "first": 1}},
 	{"type": "job", "data": {"tribe": "Oru", "id": 3, "name": "Lia", "job": "hunter", "why": "followed her mother and became a hunter"}},
 	{"type": "apprentice", "data": {"tribe": "Oru", "id": 3, "name": "Lia", "job": "potter", "teacher": "Mirra"}},
+	{"type": "hunt", "data": {"species": "deer", "tribe": "Oru", "meat": "8.5"}},
+	{"type": "hunt", "data": {"species": "deer", "tribe": "Oru", "wiped": true}},
 	{"type": "adoption", "data": {"tribe": "Oru", "id": 3, "name": "Lia", "by": "Mirra", "by_id": 1}},
 	{"type": "building_planned", "data": {"tribe": "Oru", "building": "storehouse", "needs": "12 wood and 4 stone"}},
 	{"type": "building_started", "data": {"tribe": "Oru", "building": "healer_hut", "building_id": 5, "rebuild": 0}},

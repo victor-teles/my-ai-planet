@@ -20,6 +20,7 @@ static func default_scheduler() -> TickScheduler:
 	scheduler.add_system(ClimateSystem.new())
 	scheduler.add_system(WaterSystem.new())
 	scheduler.add_system(WorkSystem.new())
+	scheduler.add_system(AnimalSystem.new())
 	scheduler.add_system(EconomySystem.new())
 	scheduler.add_system(LifeSystem.new())
 	scheduler.add_system(SocialSystem.new())

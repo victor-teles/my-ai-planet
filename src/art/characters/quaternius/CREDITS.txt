@@ -1,0 +1,8 @@
+Quaternius Universal Animation Library (Standard) and Universal Animation Library 2 (Standard).
+Author: Quaternius.
+License: CC0.
+https://quaternius.com/packs/universalanimationlibrary.html
+
+Walk and Sitting_Idle come from library 1 (ual1_standard.glb).
+TreeChopping comes from library 2 (ual2_standard.glb).
+The clips are retargeted onto Kenney's characterMedium. The Quaternius meshes are not used.

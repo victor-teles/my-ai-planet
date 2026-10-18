@@ -21,7 +21,7 @@ const CATEGORY_ORDER: Array[String] = ["birth", "death", "love", "work", "buildi
 const TYPE_CATEGORY := {
 	"birth": "birth", "death": "death", "coming_of_age": "birth",
 	"romance": "love", "marriage": "love", "proposal_refused": "love", "separation": "love",
-	"job": "work", "apprentice": "work", "adoption": "tribe",
+	"job": "work", "apprentice": "work", "hunt": "work", "adoption": "tribe",
 	"building_started": "building", "building_done": "building", "building_planned": "building",
 	"discovery": "discovery", "tech_spread": "discovery",
 	"new_chief": "tribe", "tribe_split": "tribe", "tribes_merged": "tribe", "tribe_extinct": "tribe",
@@ -149,6 +149,11 @@ static func text(event: Dictionary, local: Callable = Callable()) -> String:
 			return "%s %s." % [_s(data, "name"), _s(data, "why") if _s(data, "why") else "became a " + Jobs.name_of(_s(data, "job"))]
 		"apprentice":
 			return "%s began learning to be a %s from %s." % [_s(data, "name"), Jobs.name_of(_s(data, "job")), _s(data, "teacher")]
+		"hunt":
+			var species := _s(data, "species")
+			if data.get("wiped", false):
+				return "The %s are gone from the valley." % _animal_plural(species)
+			return "The hunters killed a %s." % species
 		"adoption":
 			return "Orphaned, %s was taken in by %s." % [_s(data, "name"), _s(data, "by")]
 		"building_planned":
@@ -346,6 +351,16 @@ static func _politics(event: Dictionary, local: Callable) -> String:
 
 static func _s(data: Dictionary, key: String) -> String:
 	return String(data.get(key, ""))
+
+
+static func _animal_plural(species_id: String) -> String:
+	match species_id:
+		"deer", "sheep":
+			return species_id
+		"wolf":
+			return "wolves"
+		_:
+			return species_id + "s"
 
 
 ## A law as a sentence names it: the tribe's own name ("the Watchful Eye of Kolu"), or the usual

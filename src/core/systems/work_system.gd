@@ -457,6 +457,13 @@ static func measure_work(state: WorldState, t: int) -> void:
 		if People.has_trait(state, p, "lazy"):
 			strength *= 0.85
 		work[job] = snappedf(float(work.get(job, 0.0)) + strength, WorldState.FLOAT_STEP)
+	# The job can stay hunter. Days the herd cannot regrow are foraging, so the camp stays fed.
+	# meat_from_hunt does not use this cap: work set by hand can still empty the valley.
+	var raw := float(work.get("hunter", 0.0))
+	var cap := AnimalSystem.sustainable_hunt_work(AnimalSystem.prey_count(state))
+	if raw > cap:
+		work["hunter"] = snappedf(cap, WorldState.FLOAT_STEP)
+		work["forager"] = snappedf(float(work.get("forager", 0.0)) + (raw - cap), WorldState.FLOAT_STEP)
 	state.tribe_work[t] = work
 
 

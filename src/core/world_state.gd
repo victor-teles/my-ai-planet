@@ -38,6 +38,7 @@ var blessed_rain_months: int = 0
 # Tribes
 var tribe_names := PackedStringArray()
 var tribe_food := PackedFloat64Array() ## stored food, in person-days
+var tribe_hunt_credit := PackedFloat64Array() ## progress toward the next kill; an empty valley keeps none
 var tribe_wood := PackedFloat64Array()
 var tribe_stone := PackedFloat64Array()
 var tribe_tools := PackedFloat64Array() ## 0..1: how well equipped the workers are
@@ -110,6 +111,19 @@ var person_loyalty := PackedInt32Array() ## 0..100: how much they back their rul
 var person_detained := PackedInt32Array() ## months left in custody, or 0
 var next_person_id: int = 0
 var _index: Dictionary = {} ## id -> index; rebuilt after removals
+
+## Wild animals, one individual each. Ids start at ANIMAL_ID_START so they never meet a person id.
+const ANIMAL_ID_START := 1000000
+var animal_ids := PackedInt32Array()
+var animal_species := PackedStringArray()
+var animal_genomes: Array[PackedByteArray] = []
+var animal_born := PackedInt32Array() ## tick
+var animal_sex := PackedStringArray() ## "f" or "m"
+var animal_condition := PackedInt32Array() ## 0 (dying) to 100
+var next_animal_id: int = ANIMAL_ID_START
+## Species seeded for this biome, and those already logged as gone. Empty on a save from before animals.
+var animal_seeded := PackedStringArray()
+var animal_wiped := PackedStringArray()
 var _index_dirty := true
 
 ## The dead, by str(id): {"name", "family", "sex", "born", "died", "cause", "tribe", "mother",
@@ -199,6 +213,9 @@ static func create(new_seed: int, bands: int = 0) -> WorldState:
 	for i: int in state.tribe_count():
 		for j: int in range(i + 1, state.tribe_count()):
 			state.set_relation(state.tribe_names[i], state.tribe_names[j], state.rng.randi_range(-15, 10))
+	# After the people, so animal ids sit above every person and event id minted while founding.
+	state.next_animal_id = maxi(ANIMAL_ID_START, maxi(state.next_person_id, state.next_event_id))
+	AnimalSystem.seed(state)
 	return state
 
 
@@ -341,6 +358,7 @@ func total_population() -> int:
 func add_tribe(tribe_name: String, water: int, culture: Dictionary = {}, language: Dictionary = {}) -> int:
 	tribe_names.append(tribe_name)
 	tribe_food.append(0.0)
+	tribe_hunt_credit.append(0.0)
 	tribe_wood.append(0.0)
 	tribe_stone.append(0.0)
 	tribe_tools.append(0.0)
@@ -392,7 +410,7 @@ func remove_tribe(index: int) -> void:
 	for p: int in range(person_ids.size() - 1, -1, -1):
 		if person_tribes[p] == gone:
 			remove_person(p) # only reached if a caller forgot to move them
-	for array: Variant in [tribe_names, tribe_food, tribe_wood, tribe_stone, tribe_tools, tribe_cloth, tribe_pots,
+	for array: Variant in [tribe_names, tribe_food, tribe_hunt_credit, tribe_wood, tribe_stone, tribe_tools, tribe_cloth, tribe_pots,
 			tribe_water, tribe_chiefs, tribe_founded, tribe_hungry_days, tribe_project, tribe_plan, tribe_population,
 			tribe_metal, tribe_treasury, tribe_legitimacy, tribe_unrest, tribe_fear, tribe_dynasty, tribe_overlord, tribe_vassal_since,
 			tribe_ruler, tribe_ruler_since]:
@@ -557,6 +575,28 @@ func remove_person(p: int) -> void:
 	person_genomes.remove_at(p)
 	person_skills.remove_at(p)
 	_index_dirty = true
+
+
+## A wild animal. Genome and sex are decided by the caller. Ids never collide with person ids.
+func add_animal(species_id: String, sex: String, born_tick: int, genome: PackedByteArray, condition: int) -> int:
+	var id := next_animal_id
+	next_animal_id += 1
+	animal_ids.append(id)
+	animal_species.append(species_id)
+	animal_genomes.append(genome)
+	animal_born.append(born_tick)
+	animal_sex.append(sex)
+	animal_condition.append(clampi(condition, 0, 100))
+	return animal_ids.size() - 1
+
+
+func remove_animal(index: int) -> void:
+	animal_ids.remove_at(index)
+	animal_species.remove_at(index)
+	animal_genomes.remove_at(index)
+	animal_born.remove_at(index)
+	animal_sex.remove_at(index)
+	animal_condition.remove_at(index)
 
 
 ## Index of a living person by id, or -1 if they aren't alive.
@@ -883,6 +923,7 @@ func settle() -> void:
 	influence = snappedf(influence, FLOAT_STEP)
 	for i: int in tribe_count():
 		tribe_food[i] = snappedf(tribe_food[i], FLOAT_STEP)
+		tribe_hunt_credit[i] = snappedf(tribe_hunt_credit[i], FLOAT_STEP)
 		tribe_wood[i] = snappedf(tribe_wood[i], FLOAT_STEP)
 		tribe_stone[i] = snappedf(tribe_stone[i], FLOAT_STEP)
 		tribe_tools[i] = snappedf(tribe_tools[i], FLOAT_STEP)
@@ -992,6 +1033,9 @@ func to_dict() -> Dictionary:
 	for p: int in person_ids.size():
 		genomes.append(Genetics.to_hex(person_genomes[p]))
 		skills.append(person_skills[p].hex_encode())
+	var animal_hex: Array[String] = []
+	for genome: PackedByteArray in animal_genomes:
+		animal_hex.append(Genetics.to_hex(genome))
 	var knowledge: Array = []
 	for known: PackedStringArray in tribe_knowledge:
 		knowledge.append(Array(known))
@@ -1006,6 +1050,7 @@ func to_dict() -> Dictionary:
 		"blessed_rain_months": blessed_rain_months,
 		"tribe_names": Array(tribe_names),
 		"tribe_food": Array(tribe_food),
+		"tribe_hunt_credit": Array(tribe_hunt_credit),
 		"tribe_wood": Array(tribe_wood),
 		"tribe_stone": Array(tribe_stone),
 		"tribe_tools": Array(tribe_tools),
@@ -1076,6 +1121,15 @@ func to_dict() -> Dictionary:
 		"building_done": Array(building_done),
 		"next_building_id": next_building_id,
 		"relations": relations,
+		"animal_ids": Array(animal_ids),
+		"animal_species": Array(animal_species),
+		"animal_genomes": animal_hex,
+		"animal_born": Array(animal_born),
+		"animal_sex": Array(animal_sex),
+		"animal_condition": Array(animal_condition),
+		"next_animal_id": next_animal_id,
+		"animal_seeded": Array(animal_seeded),
+		"animal_wiped": Array(animal_wiped),
 		"events": events,
 		"next_event_id": next_event_id,
 		"gene_history": gene_history,
@@ -1109,6 +1163,11 @@ static func from_dict(data: Dictionary) -> WorldState:
 	state.blessed_rain_months = int(data["blessed_rain_months"])
 	state.tribe_names = PackedStringArray(data["tribe_names"])
 	state.tribe_food = PackedFloat64Array(data["tribe_food"])
+	# Saves from before hunt credit start each tribe with none owed.
+	var hunt_credit: Array = data.get("tribe_hunt_credit", [])
+	state.tribe_hunt_credit = PackedFloat64Array()
+	for t: int in state.tribe_names.size():
+		state.tribe_hunt_credit.append(float(hunt_credit[t]) if t < hunt_credit.size() else 0.0)
 	state.tribe_wood = PackedFloat64Array(data["tribe_wood"])
 	state.tribe_stone = PackedFloat64Array(data["tribe_stone"])
 	state.tribe_tools = PackedFloat64Array(data["tribe_tools"])
@@ -1192,6 +1251,18 @@ static func from_dict(data: Dictionary) -> WorldState:
 	state.next_building_id = int(data["next_building_id"])
 	for key: String in data["relations"]:
 		state.relations[key] = int(data["relations"][key])
+	# A save from before animals has none of these keys: leave the herds empty, do not reseed.
+	if data.has("animal_ids"):
+		state.animal_ids = PackedInt32Array(data["animal_ids"])
+		state.animal_species = PackedStringArray(data["animal_species"])
+		for hex_text: String in data["animal_genomes"]:
+			state.animal_genomes.append(Genetics.from_hex(hex_text))
+		state.animal_born = PackedInt32Array(data["animal_born"])
+		state.animal_sex = PackedStringArray(data["animal_sex"])
+		state.animal_condition = PackedInt32Array(data["animal_condition"])
+		state.next_animal_id = int(data["next_animal_id"])
+		state.animal_seeded = PackedStringArray(data.get("animal_seeded", []))
+		state.animal_wiped = PackedStringArray(data.get("animal_wiped", []))
 	state.next_event_id = int(data["next_event_id"])
 	state.influence = float(data["influence"])
 	state.kindness = int(data["kindness"])

@@ -20,6 +20,14 @@ const RING_RADII: Array[float] = [1.3, 2.2, 3.05, 3.8]
 const WALL_RADIUS := 2.68 ## the palisade or stone wall, between the middle and outer rings
 const WALK_SPEED := 0.42 ## world units per second
 const RUN_SPEED := 0.8
+## Same accel and turn rate as the building-footprint steering check.
+const STEER_ACCEL := 1.4
+const STEER_TURN := 3.2
+## Spokes join the rings. The two gates face +Z (the wall mesh) and the far side.
+const SPOKE_ANGLES: Array[float] = [0.0, PI * 0.5, PI, PI * 1.5]
+const GATE_ANGLES: Array[float] = [0.0, PI]
+const GATE_HALF := 0.34 ## rad; drops the two segments that meet at a gate
+const WALL_SEGMENTS := 24
 const MAX_GRAVES := 40
 const MEET_SECONDS := 3.5
 const MAX_MEETINGS := 8 ## acted out at once
@@ -57,11 +65,28 @@ class Walker:
 	var emote: Label3D
 	var lying := 0.0
 	var work_phase := 0.0
+	var seated := false ## ground-sit clip is on
 	var dying := 0.0 ## counts up once they have died
 	var status := "" ## "", "noble" or "bonded"
 	var detained := false
 	var patrol := false ## a guard walking the rounds
 	var patrol_angle := 0.0
+	var mover: Dictionary = {} ## last Steering.mover: position, velocity, heading
+	var age := 30
+	var health := 100.0
+	var mood := 55.0
+	var sick := false ## days of sickness left, apart from activity == "sick"
+	var traits := PackedStringArray()
+	var height := 0.5
+	var build := 0.5
+	var gait_key := ""
+	var gait_speed := WALK_SPEED
+	var comfort := 0.58
+	var drift_speed := 0.0
+	var drift_ready := false
+	var lane_route: Array[Vector3] = []
+	var lane_goal := Vector3.INF
+	var stuck := 0.0 ## seconds barely moving while a footprint still holds the target
 
 
 var tribe_name: String
@@ -95,6 +120,10 @@ var _banner: Node3D
 var _banner_key := ""
 var _posters: Array[Node3D] = []
 var _posters_key := ""
+var _obstacles: Array = [] ## building discs, the fire, and wall capsules
+var _obstacle_stamp := ""
+var _obstacles_ready := false
+var _lanes: Lanes
 
 
 func setup(name_of_tribe: String, island: IslandShape, work_sites: WorkSites) -> void:
@@ -210,6 +239,7 @@ func sync(state: WorldState, people: Dictionary, arrivals: Dictionary) -> void:
 		var status := state.person_status[p] if p != -1 else ""
 		var detained := p != -1 and state.person_detained[p] > 0
 		_sync_person(id, people[id], arrivals, status, detained)
+		_read_body(_walkers[id] as Walker, state, p, people[id])
 
 
 func _sync_buildings(state: WorldState) -> void:
@@ -330,6 +360,18 @@ func _show_progress(id: int, type: String, progress: float) -> void:
 	model.scale.y = move_toward(model.scale.y, lerpf(0.08, 0.9, progress), 0.02)
 
 
+## True when the current walk should be dropped. Job and home are not arguments, so those changes
+## finish the trip, and so does a switch among playing, mourning, working, teaching and idle.
+## Becoming sick, an infant or resting (and getting back up), custody flipping, or dying replans now.
+static func interrupts(was_activity: String, activity: String, was_detained: bool, detained: bool, dying: float) -> bool:
+	if dying > 0.0 or was_detained != detained:
+		return true
+	if was_activity == activity:
+		return false
+	var finishes := ["playing", "mourning", "working", "teaching", "idle"]
+	return was_activity not in finishes or activity not in finishes
+
+
 func _sync_person(id: int, info: Dictionary, arrivals: Dictionary, status: String, detained: bool) -> void:
 	var age := int(info["age"])
 	var dress_class := _dress_class(status, String(info["job"]))
@@ -362,21 +404,20 @@ func _sync_person(id: int, info: Dictionary, arrivals: Dictionary, status: Strin
 				walker.node.position = yard
 			_pop_in(walker.node)
 		walker.phase = ""
+		walker.seated = false
 		VillagerArt.set_tool(walker.node, "")
 		walker.job = ""
+	var was_activity := walker.activity
+	var was_detained := walker.detained
 	if walker.detained != detained:
 		walker.detained = detained
 		walker.job = ""
 		walker.node.visible = true
-		if walker.partner == -1:
-			walker.phase = ""
 	if walker.activity != info["activity"] or walker.job != info["job"] or walker.home != int(info["home"]):
 		walker.activity = info["activity"]
 		walker.job = info["job"]
 		walker.home = int(info["home"])
 		walker.mother = int(info["mother"])
-		if walker.partner == -1:
-			walker.phase = ""
 		var working := walker.activity == "working" and not walker.detained
 		VillagerArt.set_tool(walker.node, String(TOOLS.get(walker.job, "")) if working else "")
 		if not working:
@@ -384,6 +425,9 @@ func _sync_person(id: int, info: Dictionary, arrivals: Dictionary, status: Strin
 		# Guards wear their helmets and officials their caps on duty or off; not in a cell.
 		var gear := "" if walker.detained else String({"guard": "helmet", "official": "cap"}.get(walker.job, ""))
 		VillagerArt.set_headgear(walker.node, gear, BRONZE if _age < 2 else STEEL, tint)
+	# A meeting keeps its phase. Solo walks drop only when the person must react immediately.
+	if walker.partner == -1 and interrupts(was_activity, walker.activity, was_detained, walker.detained, walker.dying):
+		walker.phase = ""
 
 
 ## Where a new figure appears: beside the mother for a newborn, where they were last seen for
@@ -451,7 +495,7 @@ func meet(a: int, b: int, kind: String) -> void:
 		walker.timer = 6.0
 		var side := (other.node.position - walker.node.position).normalized()
 		walker.target = middle - side * 0.14
-		walker.speed = WALK_SPEED if kind != "fight" else RUN_SPEED
+		_apply_speed(walker)
 
 
 # --- Behavior -----------------------------------------------------------------------
@@ -468,14 +512,22 @@ func _process(delta: float) -> void:
 	if _focus_ring and _focus_ring.get_parent():
 		_focus_ring.scale = Vector3.ONE * (1.0 + 0.08 * sin(time * 5.0))
 	for walker: Walker in _walkers.values():
+		if walker.dying == 0.0:
+			_apply_speed(walker)
+	var neighbors := _camp_neighbors()
+	var obstacles := _camp_obstacles()
+	for walker: Walker in _walkers.values():
 		if walker.dying > 0.0:
 			_die_step(walker, delta)
 		else:
-			_step(walker, delta, time)
+			_step(walker, delta, time, neighbors, obstacles)
 
 
 func _die_step(walker: Walker, delta: float) -> void:
 	walker.dying += delta
+	if walker.seated:
+		VillagerArt.set_work(walker.node, 0.0)
+		walker.seated = false
 	VillagerArt.set_lying(walker.node, clampf(walker.dying / 0.8, 0.0, 1.0))
 	if walker.dying > 1.6 and _walkers.get(walker.id) == walker:
 		for keep: Node3D in [_focus_ring, _name_tag]:
@@ -485,10 +537,13 @@ func _die_step(walker: Walker, delta: float) -> void:
 		_vanish(walker.node)
 
 
-func _step(walker: Walker, delta: float, time: float) -> void:
+func _step(walker: Walker, delta: float, time: float, neighbors: Array, obstacles: Array) -> void:
 	var node := walker.node
-	if walker.phase.is_empty():
+	# _plan fills an empty phase, so remember it for the sit check below.
+	var unplanned := walker.phase.is_empty()
+	if unplanned:
 		_plan(walker)
+	_apply_speed(walker)
 	# Lie down when sick at home, stand up otherwise.
 	var lie := 1.0 if walker.phase == "lie" else 0.0
 	if not is_equal_approx(walker.lying, lie):
@@ -505,14 +560,29 @@ func _step(walker: Walker, delta: float, time: float) -> void:
 	var to_target := walker.target - node.position
 	to_target.y = 0.0
 	var distance := to_target.length()
-	var moving := distance > 0.04 and walker.phase not in ["work", "rest", "lie", "meet", "drop"]
-	walker.walking = move_toward(walker.walking, 1.0 if moving else 0.0, delta * 3.0)
+	var settled := walker.phase in ["work", "rest", "lie", "meet", "drop"]
+	var turn_in_place := false
+	if not settled and distance > 0.04:
+		var stepped := _steer(walker, _aim(walker), neighbors, obstacles, delta)
+		turn_in_place = bool(stepped.turn_in_place)
+		to_target = walker.target - node.position
+		to_target.y = 0.0
+		distance = to_target.length()
+	elif not walker.mover.is_empty():
+		walker.mover["velocity"] = Vector3.ZERO
+		walker.mover["position"] = node.position
+		walker.mover["heading"] = node.rotation.y
+	var speed_now := 0.0 if walker.mover.is_empty() else Vector3(walker.mover.velocity).length()
+	# A building disc can hold the target inside it. Standing there still counts as arriving.
+	if turn_in_place or settled or speed_now >= 0.025 or distance >= 1.05 or distance <= 0.04:
+		walker.stuck = 0.0
+	else:
+		walker.stuck += delta
+	var moving := not settled and distance > 0.04 and walker.stuck < 0.4
+	# turn_in_place already stops the stride. Don't lerp a second turn on top.
+	var stride := moving and not turn_in_place
+	walker.walking = move_toward(walker.walking, 1.0 if stride else 0.0, delta * 3.0)
 	VillagerArt.set_walking(node, walker.walking)
-	if moving:
-		var step := to_target.normalized() * minf(walker.speed * maxf(walker.walking, 0.2) * delta, distance)
-		node.position += step
-		node.position.y = _ground(node.position)
-		node.rotation.y = lerp_angle(node.rotation.y, atan2(to_target.x, to_target.z), minf(delta * 8.0, 1.0))
 	# Working motion.
 	if walker.phase == "work":
 		walker.work_phase += delta
@@ -529,6 +599,17 @@ func _step(walker: Walker, delta: float, time: float) -> void:
 	elif walker.work_phase != 0.0:
 		walker.work_phase = 0.0
 		VillagerArt.set_work(node, 0.0)
+	# Rest sits. So does a teacher or mourner with no phase who has not started walking.
+	# Lie stays on set_lying. Walk, work, meet, and lie leave the sit clip.
+	var sitting := walker.phase == "rest" or (unplanned and walker.activity in ["teaching", "mourning"] and not moving)
+	if sitting:
+		VillagerArt.set_work(node, 0.0, 0.0, "sit")
+		walker.seated = true
+	elif walker.seated and (moving or walker.phase == "work" or walker.phase == "meet" or walker.phase == "lie"):
+		# Work already called set_work with the default action "", which clears sit.
+		if walker.phase != "work":
+			VillagerArt.set_work(node, 0.0)
+		walker.seated = false
 	if walker.phase == "meet":
 		var other: Walker = _walkers.get(walker.partner)
 		if other:
@@ -540,6 +621,9 @@ func _step(walker: Walker, delta: float, time: float) -> void:
 	var staying := walker.phase in ["work", "rest", "lie", "meet", "drop", "follow"]
 	if walker.timer <= 0.0 or (not staying and not moving):
 		_advance(walker)
+	if not walker.mover.is_empty():
+		walker.mover["position"] = node.position
+		walker.mover["heading"] = node.rotation.y
 
 
 ## What to do when someone arrives or their time is up.
@@ -597,7 +681,6 @@ func _advance(walker: Walker) -> void:
 
 
 func _plan(walker: Walker) -> void:
-	walker.speed = WALK_SPEED
 	walker.patrol = false
 	if walker.detained:
 		_hold(walker)
@@ -605,12 +688,10 @@ func _plan(walker: Walker) -> void:
 	match walker.activity:
 		"infant":
 			walker.phase = "follow"
-			walker.speed = WALK_SPEED * 1.4
 			walker.timer = 0.5
 		"playing":
 			# Children run about the whole village, and sometimes tag along with a parent.
 			walker.phase = "wander"
-			walker.speed = RUN_SPEED
 			var parent: Walker = _walkers.get(walker.mother)
 			if parent and parent.dying == 0.0 and _rng.randf() < 0.25:
 				walker.target = parent.node.position + Vector3(_rng.randf_range(-0.3, 0.3), 0.0, _rng.randf_range(-0.3, 0.3))
@@ -629,14 +710,11 @@ func _plan(walker: Walker) -> void:
 			walker.phase = "to_rest"
 			var angle := float(walker.id % 12) / 12.0 * TAU
 			walker.target = Vector3(cos(angle), 0.0, sin(angle)) * 0.7
-			walker.speed = WALK_SPEED * 0.7
 			walker.timer = 30.0
 		"working":
 			walker.phase = "to_work"
 			walker.target = _work_spot(walker)
 			walker.timer = 40.0
-			if walker.job == "guard":
-				walker.speed = WALK_SPEED * 0.8
 		_:
 			walker.phase = "wander"
 			walker.target = _near_fire(_rng.randf_range(0.6, 1.8)) if _rng.randf() < 0.6 else _home_spot(walker.home)
@@ -723,7 +801,6 @@ func _hold(walker: Walker) -> void:
 	VillagerArt.set_carry(walker.node, "")
 	walker.phase = "to_rest"
 	walker.timer = 30.0
-	walker.speed = WALK_SPEED * 0.7
 	var yard := _yard_spot()
 	if yard == Vector3.INF:
 		walker.node.visible = false
@@ -792,6 +869,235 @@ func _home_spot(home: int) -> Vector3:
 func _near_fire(radius: float) -> Vector3:
 	var angle := _rng.randf() * TAU
 	return Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
+
+
+## Body, from the sim, for the gait. p is state.index_of(id), or -1.
+func _read_body(walker: Walker, state: WorldState, p: int, info: Dictionary) -> void:
+	if p == -1:
+		walker.age = int(info.get("age", walker.age))
+		var fallback: PackedByteArray = info.get("genome", PackedByteArray())
+		if fallback.size() >= 10:
+			walker.height = Genetics.express(fallback, "height")
+			walker.build = Genetics.express(fallback, "build")
+		return
+	walker.age = People.age(state, p)
+	walker.health = float(state.person_health[p])
+	walker.mood = float(state.person_mood[p])
+	walker.sick = state.person_sick[p] > 0
+	walker.traits = People.traits_of(state, p)
+	var genome := state.person_genomes[p]
+	walker.height = Genetics.express(genome, "height")
+	walker.build = Genetics.express(genome, "build")
+
+
+## Gait speed plus seeded drift. Children and runs multiply it; the base is not one shared walk speed.
+func _apply_speed(walker: Walker) -> void:
+	_refresh_gait(walker)
+	walker.speed = walker.gait_speed * _pace(walker)
+
+
+func _refresh_gait(walker: Walker) -> void:
+	if not walker.drift_ready:
+		walker.drift_speed = float(Gait.drift(walker.id).speed)
+		walker.drift_ready = true
+	var sick := walker.activity == "sick" or walker.sick
+	var load := _load_of(walker)
+	var band := 0 if walker.age < Gait.CHILD_UNTIL else (2 if walker.age >= Gait.ELDER_AT else 1)
+	var key := "%s|%s|%d|%s|%s|%d|%d|%.3f|%.3f|%s" % [walker.activity, walker.job, band, sick, load, int(walker.health), int(walker.mood), walker.height, walker.build, "|".join(walker.traits)]
+	if key == walker.gait_key:
+		return
+	walker.gait_key = key
+	var profile := Gait.profile(walker.age, walker.height, walker.build, walker.health, sick, walker.mood, walker.traits, load)
+	walker.comfort = float(profile.comfort)
+	walker.gait_speed = maxf(float(profile.speed) + walker.drift_speed, 0.05)
+
+
+func _load_of(walker: Walker) -> String:
+	if walker.phase != "to_drop":
+		return ""
+	var carry := String(CARRIES.get(walker.job, ""))
+	if carry == "food" or carry == "wood" or carry == "stone":
+		return carry
+	return ""
+
+
+## Playing children and a fight still run. The gait already speeds children, so infants are not multiplied again.
+func _pace(walker: Walker) -> float:
+	if walker.partner != -1 and walker.meet_kind == "fight":
+		return RUN_SPEED / WALK_SPEED
+	if walker.detained:
+		return 0.7
+	match walker.activity:
+		"playing":
+			return RUN_SPEED / WALK_SPEED
+		"teaching":
+			return 0.7
+		"working":
+			if walker.job == "guard":
+				return 0.8
+	return 1.0
+
+
+func _camp_neighbors() -> Array:
+	var neighbors: Array = []
+	for walker: Walker in _walkers.values():
+		if walker.dying > 0.0:
+			continue
+		var heading := walker.node.rotation.y
+		var speed := 0.0
+		if not walker.mover.is_empty():
+			heading = float(walker.mover.heading)
+			speed = Vector3(walker.mover.velocity).length()
+		neighbors.append(Steering.mover(walker.node.position, heading, speed, Steering.BODY_RADIUS, maxf(walker.speed, 0.05), STEER_ACCEL, STEER_TURN, walker.comfort, walker.id))
+	return neighbors
+
+
+## Discs for finished buildings and the fire, plus wall capsules. Rebuilt only when that set changes.
+func _camp_obstacles() -> Array:
+	var stamp := _building_stamp()
+	if _obstacles_ready and stamp == _obstacle_stamp:
+		return _obstacles
+	_obstacles_ready = true
+	_obstacle_stamp = stamp
+	var found: Array = [Steering.fire_obstacle(Vector3.ZERO)]
+	var walled := false
+	for id: int in _building_types:
+		var type := String(_building_types[id])
+		if not String(_building_keys.get(id, "")).ends_with("true"):
+			continue
+		if type in Buildings.WALLS:
+			walled = true
+			continue
+		found.append(Steering.building_obstacle(type, _building_spots[id]))
+	_lanes = null
+	if walled:
+		found.append_array(_wall_capsules())
+		# Lanes reads only [inner, outer]. The outer ring is the wall, between RING_RADII[1] and [2].
+		_lanes = Lanes.build(Vector3.ZERO, [RING_RADII[0], WALL_RADIUS], SPOKE_ANGLES, GATE_ANGLES)
+	_obstacles = found
+	return _obstacles
+
+
+func _building_stamp() -> String:
+	var ids: Array = _building_types.keys()
+	ids.sort()
+	var parts := PackedStringArray()
+	for id: Variant in ids:
+		var built := String(_building_keys.get(id, "")).ends_with("true")
+		parts.append("%s:%s:%s" % [id, _building_types[id], built])
+	return "|".join(parts)
+
+
+## Capsules around the wall, open at the two gates. Pieces the mesh drops (a neighbor's side) are open too.
+func _wall_capsules() -> Array:
+	var pieces: Array = []
+	var step := TAU / float(WALL_SEGMENTS)
+	for i: int in WALL_SEGMENTS:
+		var mid := step * (float(i) + 0.5)
+		if _near_gate(mid):
+			continue
+		var a := _wall_point(step * float(i))
+		var b := _wall_point(step * float(i + 1))
+		if not _own_side((a + b) * 0.5, 0.2):
+			continue
+		pieces.append(Steering.wall_obstacle(a, b))
+	return pieces
+
+
+func _near_gate(angle: float) -> bool:
+	for gate: float in GATE_ANGLES:
+		if absf(angle_difference(angle, gate)) <= GATE_HALF:
+			return true
+	return false
+
+
+func _wall_point(angle: float) -> Vector3:
+	return Vector3(sin(angle), 0.0, cos(angle)) * WALL_RADIUS
+
+
+## Same side of the wall: straight to the target. Crossing it follows the lane through a gate.
+func _aim(walker: Walker) -> Vector3:
+	var goal := walker.target
+	if _lanes == null:
+		walker.lane_route.clear()
+		return goal
+	var here := walker.node.position
+	var here_out := Vector2(here.x, here.z).length() > WALL_RADIUS
+	var goal_out := Vector2(goal.x, goal.z).length() > WALL_RADIUS
+	if here_out == goal_out:
+		walker.lane_route.clear()
+		return goal
+	if walker.lane_route.is_empty() or walker.lane_goal.distance_squared_to(goal) > 0.09:
+		walker.lane_route = _lanes.path(here, goal)
+		walker.lane_goal = goal
+	# The path starts where the walk began. Drop points already passed, or the next aim is behind them.
+	_trim_route(here, walker.lane_route)
+	return _next_lane_point(here, walker.lane_route, goal)
+
+
+func _trim_route(here: Vector3, route: Array[Vector3]) -> void:
+	while route.size() > 1:
+		var a := route[0]
+		var b := route[1]
+		var da := Vector2(here.x - a.x, here.z - a.z).length()
+		var db := Vector2(here.x - b.x, here.z - b.z).length()
+		if da <= 0.45 or db + 0.05 < da:
+			route.pop_front()
+		else:
+			break
+
+
+func _next_lane_point(here: Vector3, route: Array[Vector3], goal: Vector3) -> Vector3:
+	var here_r := Vector2(here.x, here.z).length()
+	var leaving := here_r <= WALL_RADIUS
+	var chosen := goal
+	for at: Vector3 in route:
+		var offset := Vector2(here.x - at.x, here.z - at.z)
+		if offset.length() <= 0.4:
+			continue
+		# Outer-ring samples sit on the wall itself. Steer at the gate, not into a capsule.
+		if _in_wall(at) and not _at_gate(at):
+			continue
+		chosen = at
+		var at_r := Vector2(at.x, at.z).length()
+		var beyond := (leaving and at_r > WALL_RADIUS + 0.05) or (not leaving and at_r < WALL_RADIUS - 0.05)
+		if _at_gate(at) or beyond:
+			break
+		if offset.length() >= Steering.SLOW_RADIUS:
+			break
+	return Vector3(chosen.x, 0.0, chosen.z)
+
+
+func _at_gate(at: Vector3) -> bool:
+	var flat := Vector2(at.x, at.z)
+	if absf(flat.length() - WALL_RADIUS) > 0.25:
+		return false
+	return _near_gate(atan2(flat.x, flat.y))
+
+
+func _in_wall(at: Vector3) -> bool:
+	return absf(Vector2(at.x, at.z).length() - WALL_RADIUS) <= Steering.WALL_THICKNESS + Steering.BODY_RADIUS
+
+
+func _steer(walker: Walker, target: Vector3, neighbors: Array, obstacles: Array, delta: float) -> Dictionary:
+	var node := walker.node
+	if walker.mover.is_empty():
+		walker.mover = Steering.mover(node.position, node.rotation.y, 0.0, Steering.BODY_RADIUS, walker.speed, STEER_ACCEL, STEER_TURN, walker.comfort, walker.id)
+	else:
+		walker.mover["position"] = node.position
+		walker.mover["heading"] = node.rotation.y
+		walker.mover["max_speed"] = walker.speed
+		walker.mover["max_acceleration"] = STEER_ACCEL
+		walker.mover["max_turn_rate"] = STEER_TURN
+		walker.mover["comfort"] = walker.comfort
+		walker.mover["radius"] = Steering.BODY_RADIUS
+		walker.mover["id"] = walker.id
+	var next: Dictionary = Steering.step(walker.mover, target, neighbors, obstacles, delta)
+	walker.mover = next
+	var pos := next.position as Vector3
+	node.position = Vector3(pos.x, _ground(pos), pos.z)
+	node.rotation.y = float(next.heading)
+	return next
 
 
 func _face(walker: Walker, at: Vector3) -> void:

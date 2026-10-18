@@ -157,7 +157,7 @@ A data table, designed to grow into Era 2 *Bloom of Life* (species with gene tra
 - **Predators:** they take the slowest and weakest (by speed, health and age), which drives natural selection. Wolves follow the prey, so their numbers rise and fall with it.
 - **Movement:** herds move between grazing grounds and keep away from camps, as far as their wariness gene says.
 - **Every animal is an individual** (so each one keeps its own DNA). Totals are capped at about 150–300 animals per island, and most work runs monthly.
-- **Hunting becomes real:** a hunter's food comes from the animals actually killed. This replaces `wild_yield` for hunters in `EconomySystem`, and foragers stay abstract. Success depends on skill, strength, tools, and the prey's speed and wariness. Boars and bears can injure hunters. **Overhunting can wipe a species out of the valley**, which gives the feed an event and the Oracle a prophecy.
+- **Hunting becomes real.** See [Decisions](#decisions). A kill removes that animal and adds its meat. Skill, strength, tools, and the prey's speed and wariness decide the hunt. Boars and bears can injure hunters. A species can vanish from the valley, which gives the feed an event and the Oracle a prophecy.
 - **Wolves** take livestock and, rarely, attack a person. Hunters and guards drive them off.
 
 ### B4 — Taming and breeding
@@ -182,7 +182,7 @@ A data table, designed to grow into Era 2 *Bloom of Life* (species with gene tra
   - The young following their mothers.
   - Wolves trotting in a pack and chasing.
 - **Hunts acted out:** hunters stalk, throw, the animal falls, and they carry it home. A herder leads the livestock to pasture and back. Dogs trot beside their owners.
-- **An animal panel** when you click an animal: its species, age, mother, genes and a short story ("born in the spring of year 42, outran the wolves twice"). Only notable animals get names, such as the white stag or a chief's horse. The small-model naming that M3.5 uses can write them, with an offline fallback.
+- **An animal panel** when you click an animal, following the short card in [INTERFACE.md](INTERFACE.md). The first view is the species, the age, what it is doing, and one line of its story ("born in the spring of year 42, outran the wolves twice"). Genes open under Blood. Only notable animals get names, such as the white stag or a chief's horse. The small-model naming that M3.5 uses can write them, with an offline fallback.
 
 ### B6 — The Oracle and the player
 
@@ -198,7 +198,7 @@ Same seed, same animals: the determinism and save/load round-trip tests pass wit
 **Over 100 years with the kind bot:**
 - Wild herds survive.
 - Overhunting can still wipe out a species when a bot overhunts.
-- Hunters' food stays within ±10% of today's balance, so the numbers in LIFE_SIM and SOCIETY don't shift.
+- With a kind god and healthy herds, hunters' food over 100 years stays within 10% of today's balance, so the numbers in LIFE_SIM and SOCIETY don't shift. Overhunting is allowed to miss that band.
 - Domestic lines visibly drift from wild ones in at least two genes.
 
 `tools/life_report.gd` and `tools/balance_report.gd` print the animal stats. The game holds 60 fps with 300 villagers and 300 animals.
@@ -216,10 +216,21 @@ B1 gene tables ─► B2 species ─► B3 system ─► B4 taming
 
 Part A goes first because the player sees it every second. B1–B3 can run in parallel because they are headless and testable on their own.
 
-## Decisions to confirm
+## Decisions
 
-| Topic | Recommendation | Alternative |
-|---|---|---|
-| Animation source | Retarget Quaternius UAL onto the current Kenney rig, which keeps today's looks | Move to the UAL rig and repaint the skins |
-| Animal individuals | Every animal is an individual with its own genome, with a cap per island | Herds with one shared gene pool (cheaper, but the DNA story is weaker) |
-| Hunting balance | Hunting food comes from real animals, then rebalance to match today | Keep hunting abstract and make animals only visual (loses overhunting and selection by hunters) |
+Locked 2026-10-18.
+
+**Animations.** Retarget the Quaternius Universal Animation Library onto the current Kenney rig. The painted skins stay. The spike still renders a slim woman, a stout man, an elder, and a child. If the hands, the feet, or the scaled heads break, switch to the library's own rig and repaint the skins.
+
+**Animals.** Every animal is an individual with its own genome, capped at about 150 to 300 animals per island. A herd does not share one gene pool.
+
+**Hunting.** Hunters eat what they kill.
+
+Today a hunter's food is a formula in `EconomySystem`. It never looks at an animal. The valley always has game, so a tribe can hunt forever and the stores stay full. That formula goes away for hunters. Each kill removes that animal and puts meat in the store. Meat scales with the size gene. If the deer are gone, the hunters come home with less. Foragers and fishers stay on their formulas, because berries and fish are not individual animals.
+
+A healthy herd does not have to yield `RATES["hunter"]` (2.9) per hunter-work. That rate cannot come from herds under the cap if a carcass is a few dozen meals and surplus food is thrown away after 100 days. A normal camp hunts inside regrowth (20% of standing prey a year) and the rest of a hunter's labor is foraging, so the tribe's food stays near the old balance. Overhunting is hunt work left uncapped: the herd shrinks, the meat stops, and that loss is not refunded.
+
+1. People may still hold the hunter job. Each month `WorkSystem` stores only `sustainable_hunt_work` as hunter work and counts the labor above that as foraging.
+2. Work set by hand is not capped. A camp that hunts past regrowth can wipe a species, and then the meat stops. That loss is not paid back as forage.
+3. `wild_yield` keeps thinning foragers when the valley fills. Hunters leave that shared term, because animal counts already thin their catch. Rivalry over the same woods in `RelationsSystem` later keys off the shared herds.
+4. Milk and slaughter from tame herds (B4) replace part of the wild catch. They do not add a second full food source on top of the forage spare hunters already bring in.
