@@ -39,7 +39,6 @@ const TOOLS := {"forager": "basket", "hunter": "spear", "fisher": "rod", "farmer
 	"official": "scroll", "factory_worker": "wrench"}
 const CARRIES := {"forager": "food", "hunter": "food", "fisher": "fish", "farmer": "food", "woodcutter": "wood", "quarrier": "stone",
 	"miner": "stone", "factory_worker": "goods"}
-const SWING_JOBS: Array[String] = ["woodcutter", "quarrier", "builder", "toolmaker", "miner", "smith", "factory_worker"]
 ## Where guards stand watch when they aren't walking the rounds.
 const GUARD_POSTS: Array[String] = ["watchtower", "barracks", "prison", "great_house"]
 const BRONZE := Color(0.80, 0.58, 0.36)
@@ -87,6 +86,8 @@ class Walker:
 	var lane_route: Array[Vector3] = []
 	var lane_goal := Vector3.INF
 	var stuck := 0.0 ## seconds barely moving while a footprint still holds the target
+	var steer_time := 0.0 ## seconds since the last steering step (far walkers step less often)
+	var turning := false ## the last steering step turned in place
 
 
 var tribe_name: String
@@ -385,7 +386,7 @@ func _sync_person(id: int, info: Dictionary, arrivals: Dictionary, status: Strin
 		var looks := VillagerArt.wear(VillagerArt.appearance_of(info["genome"], id, info["female"], age, info["chief"], tint), _style.get("fashion", {}), dress_class, tint)
 		walker.status = status
 		var old := walker.node
-		walker.node = VillagerArt.make(looks)
+		walker.node = VillagerArt.make(looks, id)
 		walker.key = key
 		VillagerArt.offset_time(walker.node, _rng.randf() * 2.0)
 		add_child(walker.node)
@@ -455,7 +456,8 @@ func bury(id: int, chief: bool) -> void:
 		walker.partner = -1
 		VillagerArt.set_tool(walker.node, "")
 		VillagerArt.set_carry(walker.node, "")
-		VillagerArt.set_walking(walker.node, 0.0)
+		VillagerArt.set_locomotion_speed(walker.node, 0.0)
+		VillagerArt.play_action(walker.node, "die")
 	var grave := BuildingArt.grave(_rng, chief)
 	grave.position = _grave_spot(_graves.size())
 	grave.position.y = _ground(grave.position)
@@ -516,19 +518,18 @@ func _process(delta: float) -> void:
 			_apply_speed(walker)
 	var neighbors := _camp_neighbors()
 	var obstacles := _camp_obstacles()
+	# One spatial hash per frame for the whole camp; hashing per walker was O(n^2).
+	var grid := Steering.neighbor_grid(neighbors)
 	for walker: Walker in _walkers.values():
 		if walker.dying > 0.0:
 			_die_step(walker, delta)
 		else:
-			_step(walker, delta, time, neighbors, obstacles)
+			_step(walker, delta, time, neighbors, obstacles, grid)
 
 
 func _die_step(walker: Walker, delta: float) -> void:
 	walker.dying += delta
-	if walker.seated:
-		VillagerArt.set_work(walker.node, 0.0)
-		walker.seated = false
-	VillagerArt.set_lying(walker.node, clampf(walker.dying / 0.8, 0.0, 1.0))
+	walker.seated = false
 	if walker.dying > 1.6 and _walkers.get(walker.id) == walker:
 		for keep: Node3D in [_focus_ring, _name_tag]:
 			if keep and keep.get_parent() == walker.node:
@@ -537,18 +538,17 @@ func _die_step(walker: Walker, delta: float) -> void:
 		_vanish(walker.node)
 
 
-func _step(walker: Walker, delta: float, time: float, neighbors: Array, obstacles: Array) -> void:
+func _step(walker: Walker, delta: float, time: float, neighbors: Array, obstacles: Array, grid: Dictionary = {}) -> void:
 	var node := walker.node
 	# _plan fills an empty phase, so remember it for the sit check below.
 	var unplanned := walker.phase.is_empty()
 	if unplanned:
 		_plan(walker)
 	_apply_speed(walker)
-	# Lie down when sick at home, stand up otherwise.
+	# Lie down when sick at home, stand up otherwise (the "lie" action, below).
 	var lie := 1.0 if walker.phase == "lie" else 0.0
 	if not is_equal_approx(walker.lying, lie):
 		walker.lying = move_toward(walker.lying, lie, delta * 1.5)
-		VillagerArt.set_lying(node, walker.lying)
 	# Babies stay with their mother.
 	if walker.phase == "follow":
 		var mother: Walker = _walkers.get(walker.mother)
@@ -563,12 +563,19 @@ func _step(walker: Walker, delta: float, time: float, neighbors: Array, obstacle
 	var settled := walker.phase in ["work", "rest", "lie", "meet", "drop"]
 	var turn_in_place := false
 	if not settled and distance > 0.04:
-		var stepped := _steer(walker, _aim(walker), neighbors, obstacles, delta)
-		turn_in_place = bool(stepped.turn_in_place)
+		# Level of detail: far or off-screen walkers steer on the frames their animation updates,
+		# with the time since their last step, so the clip measures one whole step each time.
+		walker.steer_time += delta
+		if VillagerArt.animator(node).updates_this_frame():
+			var stepped := _steer(walker, _aim(walker), neighbors, obstacles, walker.steer_time, grid)
+			walker.turning = bool(stepped.turn_in_place)
+			walker.steer_time = 0.0
+		turn_in_place = walker.turning
 		to_target = walker.target - node.position
 		to_target.y = 0.0
 		distance = to_target.length()
 	elif not walker.mover.is_empty():
+		walker.steer_time = 0.0
 		walker.mover["velocity"] = Vector3.ZERO
 		walker.mover["position"] = node.position
 		walker.mover["heading"] = node.rotation.y
@@ -582,36 +589,25 @@ func _step(walker: Walker, delta: float, time: float, neighbors: Array, obstacle
 	# turn_in_place already stops the stride. Don't lerp a second turn on top.
 	var stride := moving and not turn_in_place
 	walker.walking = move_toward(walker.walking, 1.0 if stride else 0.0, delta * 3.0)
-	VillagerArt.set_walking(node, walker.walking)
-	# Working motion.
+	VillagerArt.set_locomotion_speed(node, speed_now if stride else 0.0)
+	# What the body does: the trade's clip at work, a rest by activity, the meeting's kind, or
+	# standing and walking. The animator walks instead of any of these while the figure moves.
+	# A teacher or mourner with no phase who has not started walking rests too.
+	var sitting := walker.phase == "rest" or (unplanned and walker.activity in ["teaching", "mourning"] and not moving)
+	walker.seated = sitting
 	if walker.phase == "work":
 		walker.work_phase += delta
-		if walker.job in SWING_JOBS:
-			VillagerArt.set_work(node, 0.15, maxf(sin(walker.work_phase * 5.0), 0.0))
-		elif walker.job in ["forager", "healer"]:
-			VillagerArt.set_work(node, 0.0, 0.0, "kneel")
-		elif walker.job == "farmer":
-			VillagerArt.set_work(node, 0.0, 0.0, "farm")
-		elif walker.job == "guard":
-			VillagerArt.set_work(node, 0.0)
-		elif walker.job in ["scholar", "official"]:
-			VillagerArt.set_work(node, 0.3 + 0.05 * sin(walker.work_phase * 0.8))
-		else:
-			VillagerArt.set_work(node, 0.2 + 0.1 * sin(walker.work_phase * 1.5))
-	elif walker.work_phase != 0.0:
+		VillagerArt.play_action(node, "" if walker.patrol else VillagerArt.work_action(walker.job))
+	else:
 		walker.work_phase = 0.0
-		VillagerArt.set_work(node, 0.0)
-	# Rest sits. So does a teacher or mourner with no phase who has not started walking.
-	# Lie stays on set_lying. Walk, work, meet, and lie leave the sit clip.
-	var sitting := walker.phase == "rest" or (unplanned and walker.activity in ["teaching", "mourning"] and not moving)
-	if sitting:
-		VillagerArt.set_work(node, 0.0, 0.0, "sit")
-		walker.seated = true
-	elif walker.seated and (moving or walker.phase == "work" or walker.phase == "meet" or walker.phase == "lie"):
-		# Work already called set_work with the default action "", which clears sit.
-		if walker.phase != "work":
-			VillagerArt.set_work(node, 0.0)
-		walker.seated = false
+		if walker.phase == "lie":
+			VillagerArt.play_action(node, "lie")
+		elif walker.phase == "meet":
+			VillagerArt.play_action(node, VillagerArt.meet_action(walker.meet_kind))
+		elif sitting:
+			VillagerArt.play_action(node, "sit" if walker.detained else VillagerArt.rest_action(walker.activity))
+		else:
+			VillagerArt.play_action(node, "")
 	if walker.phase == "meet":
 		var other: Walker = _walkers.get(walker.partner)
 		if other:
@@ -641,6 +637,7 @@ func _advance(walker: Walker) -> void:
 			if walker.patrol:
 				walker.phase = ""
 			elif carry:
+				VillagerArt.play_once(walker.node, "pick_up")
 				VillagerArt.set_carry(walker.node, carry)
 				walker.phase = "to_drop"
 				walker.target = _drop_spot(walker.job)
@@ -651,6 +648,7 @@ func _advance(walker: Walker) -> void:
 		"to_drop":
 			walker.phase = "drop"
 			walker.timer = 1.2
+			VillagerArt.play_once(walker.node, "put_down")
 		"drop":
 			VillagerArt.set_carry(walker.node, "")
 			if _rng.randf() < 0.35:
@@ -1081,7 +1079,7 @@ func _in_wall(at: Vector3) -> bool:
 	return absf(Vector2(at.x, at.z).length() - WALL_RADIUS) <= Steering.WALL_THICKNESS + Steering.BODY_RADIUS
 
 
-func _steer(walker: Walker, target: Vector3, neighbors: Array, obstacles: Array, delta: float) -> Dictionary:
+func _steer(walker: Walker, target: Vector3, neighbors: Array, obstacles: Array, delta: float, grid: Dictionary = {}) -> Dictionary:
 	var node := walker.node
 	if walker.mover.is_empty():
 		walker.mover = Steering.mover(node.position, node.rotation.y, 0.0, Steering.BODY_RADIUS, walker.speed, STEER_ACCEL, STEER_TURN, walker.comfort, walker.id)
@@ -1094,7 +1092,7 @@ func _steer(walker: Walker, target: Vector3, neighbors: Array, obstacles: Array,
 		walker.mover["comfort"] = walker.comfort
 		walker.mover["radius"] = Steering.BODY_RADIUS
 		walker.mover["id"] = walker.id
-	var next: Dictionary = Steering.step(walker.mover, target, neighbors, obstacles, delta)
+	var next: Dictionary = Steering.step(walker.mover, target, neighbors, obstacles, delta, grid)
 	walker.mover = next
 	var pos := next.position as Vector3
 	node.position = Vector3(pos.x, _ground(pos), pos.z)

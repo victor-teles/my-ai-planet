@@ -1,8 +1,16 @@
 extends SceneTree
-## Close-ups of the retargeted walk, sit, chop, kneel and farm on four Kenney villagers.
-## Usage: godot --path src --resolution 1000x1200 -s res://tools/anim_spike.gd -- --out=<dir>
+## Close-ups of the villager animation set (VillagerClips) on Kenney villagers, through the same
+## API Settlement uses (play_action, set_locomotion_speed, set_carry).
+## Usage: godot --path src --resolution 1000x1200 -s res://tools/anim_spike.gd -- [--out=<dir>]
+##   [--who=slim-woman,stout-man,elder,child] [--actions=walk,jog,run,carry,sit,chop,...]
+##   [--frames=N --step=0.1]: N stills per action, step seconds apart (to compare feet frame to frame)
+##   [--sheet]: every action of one figure in one image, a grid of cells, instead of one file each
+## "walk", "jog" and "run" are locomotion at that gait's blend position; "carry" is a walk with a
+## load; anything else is an action name.
 
 const SKY_SHADER := preload("res://art/shaders/sky_dusk.gdshader")
+const DEFAULT_ACTIONS: Array[String] = ["walk", "jog", "run", "carry", "sit", "chop", "hammer", "hoe", "gather", "kneel", "talk", "mourn", "lie"]
+const SPEEDS := {"walk": 0.42, "jog": 0.9, "run": 1.6, "carry": 0.36}
 
 var _out := ""
 var _camera: Camera3D
@@ -12,15 +20,34 @@ var _shots: Array[Dictionary] = []
 var _index := -1
 var _hold := 0
 var _current: Node3D
+var _frames := 1
+var _step := 0.1
+var _sheet := false
+var _cells: Array[Image] = []
+var _cell_names: PackedStringArray = []
 
 
 func _initialize() -> void:
+	var who: Array[String] = ["slim-woman", "stout-man", "elder", "child"]
+	var actions: Array[String] = DEFAULT_ACTIONS.duplicate()
 	for arg: String in OS.get_cmdline_user_args():
 		var pair := arg.trim_prefix("--").split("=")
-		if pair[0] == "out" and pair.size() > 1:
-			_out = pair[1]
+		var value := pair[1] if pair.size() > 1 else ""
+		match pair[0]:
+			"out":
+				_out = value
+			"who":
+				who.assign(value.split(","))
+			"actions":
+				actions.assign(value.split(","))
+			"frames":
+				_frames = maxi(int(value), 1)
+			"step":
+				_step = float(value)
+			"sheet":
+				_sheet = true
 	if _out.is_empty():
-		_out = ProjectSettings.globalize_path("res://").path_join("../docs/screenshots/anim-spike")
+		_out = ProjectSettings.globalize_path("res://").path_join("../docs/screenshots/anim-set")
 	DirAccess.make_dir_recursive_absolute(_out)
 	_world = Node3D.new()
 	root.add_child(_world)
@@ -42,10 +69,16 @@ func _initialize() -> void:
 	_label.add_theme_color_override("font_outline_color", Color(0.05, 0.05, 0.08))
 	_label.add_theme_constant_override("outline_size", 8)
 	root.add_child(_label)
-	_queue("slim-woman", _adult(11, true, 28, "slim", Color(0.86, 0.38, 0.52)))
-	_queue("stout-man", _adult(23, false, 34, "stout", Color(0.25, 0.42, 0.72)))
-	_queue("elder", _adult(41, false, 72, "average", Color(0.55, 0.40, 0.28)))
-	_queue("child", VillagerArt.child_appearance(7, Color(0.95, 0.72, 0.28)))
+	var people := {
+		"slim-woman": _adult(11, true, 28, "slim", Color(0.86, 0.38, 0.52)),
+		"stout-man": _adult(23, false, 34, "stout", Color(0.25, 0.42, 0.72)),
+		"elder": _adult(41, false, 72, "average", Color(0.55, 0.40, 0.28)),
+		"child": VillagerArt.child_appearance(7, Color(0.95, 0.72, 0.28)),
+	}
+	for name: String in who:
+		for action: String in actions:
+			for frame: int in _frames:
+				_shots.append({"who": name, "action": action, "looks": people[name], "frame": frame})
 
 
 func _adult(id: int, female: bool, age: int, build: String, tunic: Color) -> Dictionary:
@@ -53,11 +86,6 @@ func _adult(id: int, female: bool, age: int, build: String, tunic: Color) -> Dic
 	looks["build"] = build
 	looks["female"] = female
 	return looks
-
-
-func _queue(who: String, looks: Dictionary) -> void:
-	for action: String in ["walk", "sit", "chop", "kneel", "farm"]:
-		_shots.append({"who": who, "action": action, "looks": looks})
 
 
 func _environment() -> void:
@@ -85,21 +113,26 @@ func _environment() -> void:
 
 
 func _process(_delta: float) -> bool:
-	if _current:
-		_shape(_current)
 	if _hold > 0:
 		_hold -= 1
 		if _hold > 0:
 			return false
 		var shot: Dictionary = _shots[_index]
-		var path := _out.path_join("%s-%s.png" % [shot["who"], shot["action"]])
 		var image := root.get_texture().get_image()
-		var err := image.save_png(path)
-		print("saved ", path, " ", err, " ", image.get_width(), "x", image.get_height())
-		_dump()
+		if _sheet:
+			_cells.append(image)
+			_cell_names.append(String(shot["action"]))
+		else:
+			var suffix := "" if _frames == 1 else "-%02d" % int(shot["frame"])
+			var path := _out.path_join("%s-%s%s.png" % [shot["who"], shot["action"], suffix])
+			print("saved ", path, " ", image.save_png(path))
+		_dump(String(shot["action"]))
 		_current.queue_free()
 		_current = null
-		if _index + 1 >= _shots.size():
+		var last := _index + 1 >= _shots.size()
+		if _sheet and (last or _shots[_index + 1]["who"] != shot["who"]):
+			_save_sheet(String(shot["who"]))
+		if last:
 			return true
 	_index += 1
 	_show(_shots[_index])
@@ -109,91 +142,88 @@ func _process(_delta: float) -> bool:
 
 func _show(shot: Dictionary) -> void:
 	var looks: Dictionary = shot["looks"]
-	var villager := VillagerArt.make(looks)
-	var tree := villager.get_node("Model/AnimationTree") as AnimationTree
-	tree.active = false
+	var villager := VillagerArt.make(looks, 5)
 	_world.add_child(villager)
+	var animator := VillagerArt.animator(villager)
+	animator.measure = false
+	animator.idle_kind = "idle"
 	var action := String(shot["action"])
-	if action == "walk":
-		VillagerArt.set_walking(villager, 1.0)
-		VillagerArt.set_work(villager, 0.0)
-	elif action == "sit":
-		VillagerArt.set_walking(villager, 0.0)
-		VillagerArt.set_work(villager, 0.0, 0.0, "sit")
-	elif action == "kneel":
-		VillagerArt.set_walking(villager, 0.0)
-		VillagerArt.set_work(villager, 0.0, 0.0, "kneel")
-	elif action == "farm":
-		VillagerArt.set_walking(villager, 0.0)
-		VillagerArt.set_work(villager, 0.0, 0.0, "farm")
+	var at := 0.0
+	if SPEEDS.has(action):
+		VillagerArt.set_locomotion_speed(villager, float(SPEEDS[action]) * animator.body)
+		if action == "carry":
+			VillagerArt.set_carry(villager, "wood")
+		# Settle the smoothed speed, then land on a stride with the feet far apart.
+		for i: int in 30:
+			animator.update(1.0 / 30.0)
+		at = _stride_time(villager) + float(shot["frame"]) * _step
 	else:
-		VillagerArt.set_walking(villager, 0.0)
-		VillagerArt.set_tool(villager, "axe")
-		VillagerArt.set_work(villager, 0.15, 1.0)
-	var at := _pose_time(villager, action)
-	tree.advance(at)
-	_shape(villager)
-	print("pose ", shot["who"], " ", action, " at ", snappedf(at, 0.001))
+		VillagerArt.play_action(villager, action)
+		if action == "chop" or action == "hammer":
+			VillagerArt.set_tool(villager, "axe" if action == "chop" else "hammer")
+		elif action == "hoe":
+			VillagerArt.set_tool(villager, "hoe")
+		animator.update(0.0)
+		at = 0.6 + float(shot["frame"]) * _step
+	animator.update(at)
+	animator.set_process(false)
 	var grown := float(villager.get_meta("growth", 1.0))
 	var top := 0.78 * float(looks["height"]) * grown
 	var center := Vector3(0.0, top * 0.46, 0.0)
-	var yaw := -0.62
-	var pitch := -0.16
-	var distance := top * 1.85
+	var yaw := -0.62 if action != "lie" else -1.2
+	var pitch := -0.16 if action != "lie" else -0.5
+	var distance := top * (1.85 if action != "lie" else 2.2)
 	_camera.position = center + Vector3(sin(yaw) * cos(pitch), -sin(pitch), cos(yaw) * cos(pitch)) * distance
 	_camera.look_at_from_position(_camera.position, center)
-	_label.text = "%s  %s" % [shot["who"], action]
+	_label.text = "%s  %s%s" % [shot["who"], action, "" if _frames == 1 else "  +%.2fs" % (float(shot["frame"]) * _step)]
 	_current = villager
 
 
-func _pose_time(villager: Node3D, action: String) -> float:
-	var skeleton := villager.get_node("Model/Root/Skeleton3D") as Skeleton3D
-	var player := villager.get_node("Model/AnimationPlayer") as AnimationPlayer
-	var anim := player.get_animation(action)
-	var best_time := anim.length * 0.35
-	var best := -999.0
-	var steps := 24
+## Seconds to advance a gait from here to where the feet are furthest apart along the walk.
+func _stride_time(villager: Node3D) -> float:
+	var animator := VillagerArt.animator(villager)
+	var scale := float(animator.tree.get("parameters/pace/scale"))
+	if scale <= 0.0:
+		return 0.0
+	var skeleton := animator.skeleton
+	var best := 0.0
+	var best_spread := -1.0
+	var steps := 16
 	for step: int in steps:
-		var time := anim.length * step / float(steps)
-		_apply(skeleton, anim, time)
-		var score := 0.0
-		if action == "walk":
-			var left := VillagerArt._bone_global(skeleton, skeleton.find_bone("LeftFoot")).origin
-			var right := VillagerArt._bone_global(skeleton, skeleton.find_bone("RightFoot")).origin
-			score = absf(left.y - right.y)
-		elif action == "sit":
-			score = -VillagerArt._bone_global(skeleton, skeleton.find_bone("Hips")).origin.z
-		else:
-			score = VillagerArt._bone_global(skeleton, skeleton.find_bone("RightHand")).origin.z
-		if score > best:
-			best = score
-			best_time = time
-	skeleton.reset_bone_poses()
-	return best_time
+		animator.update(1.0 / (scale * steps))
+		var left := VillagerArt._bone_global(skeleton, skeleton.find_bone("LeftFoot")).origin
+		var right := VillagerArt._bone_global(skeleton, skeleton.find_bone("RightFoot")).origin
+		var spread := absf(left.y - right.y)
+		if spread > best_spread:
+			best_spread = spread
+			best = float(step + 1) / (scale * steps)
+	# The loop above went one whole cycle, so best from here lands on the widest stride.
+	return best
 
 
-func _apply(skeleton: Skeleton3D, anim: Animation, time: float) -> void:
-	skeleton.reset_bone_poses()
-	for track: int in anim.get_track_count():
-		var bone := skeleton.find_bone(String(anim.track_get_path(track).get_concatenated_subnames()))
-		if bone < 0:
-			continue
-		if anim.track_get_type(track) == Animation.TYPE_ROTATION_3D:
-			skeleton.set_bone_pose_rotation(bone, anim.rotation_track_interpolate(track, time))
-		elif anim.track_get_type(track) == Animation.TYPE_POSITION_3D:
-			skeleton.set_bone_pose_position(bone, anim.position_track_interpolate(track, time))
+func _save_sheet(who: String) -> void:
+	if _cells.is_empty():
+		return
+	var cell_w := _cells[0].get_width() / 2
+	var cell_h := _cells[0].get_height() / 2
+	var cols := mini(_cells.size(), 5)
+	var rows := ceili(_cells.size() / float(cols))
+	var sheet := Image.create(cell_w * cols, cell_h * rows, false, _cells[0].get_format())
+	for i: int in _cells.size():
+		var cell := _cells[i]
+		cell.resize(cell_w, cell_h)
+		sheet.blit_rect(cell, Rect2i(0, 0, cell_w, cell_h), Vector2i((i % cols) * cell_w, (i / cols) * cell_h))
+	var path := _out.path_join("%s-sheet.png" % who)
+	print("saved ", path, " ", sheet.save_png(path), " ", ",".join(_cell_names))
+	_cells.clear()
+	_cell_names.clear()
 
 
-func _shape(villager: Node3D) -> void:
-	var pose := villager.get_meta("pose") as VillagerPose
-	pose._process_modification_with_delta(0.0)
-
-
-func _dump() -> void:
+func _dump(action: String) -> void:
 	var skeleton := _current.get_node("Model/Root/Skeleton3D") as Skeleton3D
-	var head := skeleton.find_bone("Head")
-	print("  head scale ", skeleton.get_bone_pose_scale(head))
+	var line := PackedStringArray()
 	for bone_name: String in ["Head", "Hips", "LeftHand", "RightHand", "LeftFoot", "RightFoot"]:
 		var idx := skeleton.find_bone(bone_name)
 		var world: Vector3 = (skeleton.global_transform * skeleton.get_bone_global_pose(idx)).origin
-		print("  ", bone_name, " world ", world)
+		line.append("%s %.3f,%.3f,%.3f" % [bone_name, world.x, world.y, world.z])
+	print("  ", action, ": ", "  ".join(line))

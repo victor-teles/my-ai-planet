@@ -5,17 +5,14 @@ extends RefCounted
 ## DNA decides their skin tone, hair color, eye shape, height and build, so children look like a
 ## mix of their parents; their id picks the rest (face, beard, hair style); age and sex come from
 ## the simulation, and children grow a little every year.
-## Walking plays a retargeted walk clip, sped up or slowed so one cycle covers the distance
-## the villager actually moved. Idle and run stay in the library. Sitting, kneeling, farming
-## and chopping play their own clips; other work still stoops and swings by bending bones
-## (see set_tool, set_work).
+## Motion is a set of retargeted clips (VillagerClips) in an AnimationTree that a VillagerAnimator
+## plays: idle, walk, jog and run blended by the speed the figure really moves, so the feet keep
+## pace with the ground, and actions (sitting, working by trade, talking, mourning, lying down...)
+## that Settlement asks for by name. The API: play_action(), play_once(), set_locomotion_speed(),
+## set_carry(), and work_action() / meet_action() / rest_action() to pick the clip for a trade,
+## a meeting or a rest. VillagerPose still scales and bends bones on top of every clip.
 
 const MODEL := preload("res://art/characters/kenney/characterMedium.fbx")
-const IDLE_SOURCE := preload("res://art/characters/kenney/idle.fbx")
-const RUN_SOURCE := preload("res://art/characters/kenney/run.fbx")
-const WALK_SOURCE := preload("res://art/characters/quaternius/ual1_standard.glb")
-const CHOP_SOURCE := preload("res://art/characters/quaternius/ual2_standard.glb")
-const HUMANOID := preload("res://art/characters/kenney/humanoid.tres")
 const SHADER := preload("res://art/shaders/villager.gdshader")
 const MODEL_SCALE := 0.2 ## Kenney's character is 3.8 units tall; adults stand about two thirds of a tent
 const CHILD_SCALE := 0.62
@@ -24,12 +21,21 @@ const CHILD_HEAD_SCALE := 0.9
 const HEIGHT := 0.67 ## world units, for picking
 const OUTLINE_WIDTH := 0.0005 ## in the model's own (tiny) units
 const ELDER_AGE := 55
-const WALK_BLEND := 0.4 ## how much of the run shows through while walking
-const WALK_PACE := 0.7 ## run clip speed while walking
-const CHILD_WALK_BLEND := 0.85 ## children run
-const PACE_MIN := 0.2
-const PACE_MAX := 12.0 ## the retargeted cycle is short, so a toddler at a run still needs a high rate
-const PACE_DT_MAX := 0.25 ## a longer gap is a hitch or the first sample, not a real speed
+## The clip for each trade at work (see work_action). Trades not listed use DEFAULT_WORK.
+const WORK_ACTIONS := {
+	"woodcutter": "chop", "quarrier": "chop", "miner": "chop", "smith": "chop",
+	"builder": "hammer", "toolmaker": "hammer", "potter": "kneel", "healer": "kneel",
+	"forager": "gather", "farmer": "hoe", "hunter": "crouch", "fisher": "hold_up", "guard": "hold_up",
+	"scholar": "interact", "factory_worker": "interact", "weaver": "sit_talk",
+	"merchant": "talk", "official": "talk", "shaman": "pray",
+}
+const DEFAULT_WORK := "interact"
+## The clip for each kind of meeting the sim reports (see meet_action).
+const MEET_ACTIONS := {"chat": "talk", "love": "agree", "flirt": "talk", "quarrel": "argue", "fight": "fight"}
+## The clip for a rest, by what the person is doing (see rest_action). Anything else sits.
+const REST_ACTIONS := {"teaching": "sit_talk", "mourning": "mourn", "resting": "lie", "sick": "lie", "playing": "jump"}
+## Extra bends (radians forward) an action adds on top of its clip, where the clip lacks them.
+const ACTION_BENDS := {"mourn": {"Neck": 0.45, "Chest": 0.15}, "pray": {"Neck": 0.3}}
 
 const SKIN_TONES: Array[Color] = [
 	Color(0.97, 0.82, 0.70), Color(0.93, 0.74, 0.60), Color(0.86, 0.65, 0.48), Color(0.76, 0.54, 0.38),
@@ -61,10 +67,6 @@ const PATTERNS := {"plain": 0.0, "stripes": 1.0, "hem": 2.0, "checks": 3.0, "sas
 const GOLD := Color(0.98, 0.8, 0.36)
 
 static var _materials: Dictionary = {} ## skin name -> ShaderMaterial
-static var _library: AnimationLibrary
-static var _tree: AnimationNodeBlendTree
-static var _walk_stride := 0.0 ## one walk cycle, in skeleton units, along the facing axis
-static var _walk_length := 1.0
 static var _accessory_meshes: Dictionary = {} ## accessory part -> its mesh, shared by every figure
 
 
@@ -190,12 +192,12 @@ static func _base_looks(rng: RandomNumberGenerator, tunic: Color) -> Dictionary:
 	}
 
 
-## A villager standing on its origin, facing +Z. Call set_walking() to animate it.
-static func make(looks: Dictionary) -> Node3D:
+## A villager standing on its origin, facing +Z, animated by its VillagerAnimator (see animator()).
+## seed_value spreads the animation updates of a crowd over frames (any number; ids work well).
+static func make(looks: Dictionary, seed_value: int = 0) -> Node3D:
 	var child: bool = looks["child"]
 	var grown := float(looks.get("growth", CHILD_SCALE if child else 1.0))
 	var villager := Node3D.new()
-	villager.set_meta("walk_blend", CHILD_WALK_BLEND if child else WALK_BLEND)
 	villager.set_meta("growth", grown)
 	var model := MODEL.instantiate() as Node3D
 	model.name = "Model"
@@ -217,14 +219,21 @@ static func make(looks: Dictionary) -> Node3D:
 
 	var player := AnimationPlayer.new()
 	player.name = "AnimationPlayer"
-	player.add_animation_library("", _animations())
+	player.add_animation_library("", VillagerClips.library())
 	model.add_child(player)
 	var tree := AnimationTree.new()
 	tree.name = "AnimationTree"
-	tree.tree_root = _blend_tree()
+	tree.tree_root = VillagerClips.tree_root()
 	tree.anim_player = NodePath("../AnimationPlayer")
 	model.add_child(tree)
-	tree.set("parameters/pace/scale", 1.0)
+	var animator := VillagerAnimator.new()
+	animator.name = "Animator"
+	var size := float(looks["height"]) * grown
+	animator.setup(tree, skeleton, size, VillagerClips.root_scale() * model.scale.y, seed_value)
+	# Some fold their arms or stand easy while they wait; most stand plainly.
+	animator.idle_kind = ["idle", "idle", "idle_arms", "idle_easy"][posmod(hash([seed_value, "idle"]), 4)]
+	villager.add_child(animator)
+	villager.set_meta("animator", animator)
 
 	var head := _head_holder(skeleton, head_scale)
 	villager.set_meta("head", head)
@@ -339,7 +348,7 @@ static func statue(material: Material, raise: float, cloak: Color, pose: String 
 	figure.add_child(model)
 	var skeleton := model.get_node("Root/Skeleton3D") as Skeleton3D
 	(skeleton.get_node("characterMedium") as MeshInstance3D).material_override = material
-	var idle := _animations().get_animation("idle")
+	var idle := VillagerClips.library().get_animation("idle_easy")
 	for track: int in idle.get_track_count():
 		var bone := skeleton.find_bone(String(idle.track_get_path(track).get_concatenated_subnames()))
 		if bone == -1:
@@ -427,26 +436,64 @@ static func _box(size: Vector3) -> BoxMesh:
 	return mesh
 
 
-## Eases a villager between standing (0) and the walk clip (1). The clip speeds up with the
-## distance covered since the previous call, so the feet keep pace with the body.
-static func set_walking(villager: Node3D, amount: float) -> void:
-	var tree := villager.get_node("Model/AnimationTree") as AnimationTree
-	tree.set("parameters/walk/blend_amount", amount)
-	var now := Time.get_ticks_msec()
-	var pos := villager.global_position if villager.is_inside_tree() else villager.position
-	if amount > 0.001 and villager.has_meta("walk_sample_pos") and _walk_stride > 0.0:
-		var dt := (now - int(villager.get_meta("walk_sample_at"))) / 1000.0
-		if dt > 0.0 and dt <= PACE_DT_MAX:
-			var previous: Vector3 = villager.get_meta("walk_sample_pos")
-			var delta := pos - previous
-			var speed := Vector2(delta.x, delta.z).length() / dt
-			var model := villager.get_node("Model") as Node3D
-			var root := model.get_node("Root") as Node3D
-			var world_stride := _walk_stride * absf(root.transform.basis.get_scale().y) * model.scale.y
-			if world_stride > 0.00001:
-				tree.set("parameters/pace/scale", clampf(speed * _walk_length / world_stride, PACE_MIN, PACE_MAX))
-	villager.set_meta("walk_sample_at", now)
-	villager.set_meta("walk_sample_pos", pos)
+## The villager's animator: its clips, gait and level of detail.
+static func animator(villager: Node3D) -> VillagerAnimator:
+	return villager.get_meta("animator") as VillagerAnimator
+
+
+## How fast Settlement is moving the villager, in world units a second (0 when standing). In the
+## scene the animator measures the real movement and uses that for the gait and the clip rate;
+## this speed drives them when the figure is not moved (tools, stills: see VillagerAnimator.measure).
+static func set_locomotion_speed(villager: Node3D, speed: float) -> void:
+	animator(villager).speed = maxf(speed, 0.0)
+
+
+## Starts an action (a looping state, one of VillagerClips.actions(): "sit", "chop", "talk",
+## "mourn", "lie", "die"...) or "" to go back to standing and walking. While the figure is
+## moving, the animator walks instead and resumes the action when it stops. Bends an action
+## needs on top of its clip (a mourner's bowed head) come and go with it.
+static func play_action(villager: Node3D, action: String) -> void:
+	var player := animator(villager)
+	if player.action == action:
+		return
+	if not action.is_empty() and not VillagerClips.has_action(action):
+		push_error("VillagerArt: no action %s" % action)
+		return
+	var pose := villager.get_meta("pose") as VillagerPose
+	for bone: String in ACTION_BENDS.get(player.action, {}):
+		pose.set_extra(bone, 0.0)
+	for bone: String in ACTION_BENDS.get(action, {}):
+		pose.set_extra(bone, float(ACTION_BENDS[action][bone]))
+	player.action = action
+
+
+## The action playing (or asked for), "" when standing or walking.
+static func current_action(villager: Node3D) -> String:
+	return animator(villager).action
+
+
+## A one-shot gesture of the upper body over whatever plays: "pick_up", "put_down", "nod" or "punch".
+static func play_once(villager: Node3D, gesture: String) -> void:
+	if not VillagerClips.has_gesture(gesture):
+		push_error("VillagerArt: no gesture %s" % gesture)
+		return
+	animator(villager).fire(gesture)
+
+
+## The action for a trade at work.
+static func work_action(job: String) -> String:
+	return String(WORK_ACTIONS.get(job, DEFAULT_WORK))
+
+
+## The action for a meeting of a kind the sim reports ("chat", "love", "flirt", "quarrel", "fight").
+static func meet_action(kind: String) -> String:
+	return String(MEET_ACTIONS.get(kind, "talk"))
+
+
+## The action for resting, by the person's activity: teachers talk sitting, mourners kneel with
+## their heads bowed, the sick and the resting lie down, playing children jump; others sit.
+static func rest_action(activity: String) -> String:
+	return String(REST_ACTIONS.get(activity, "sit"))
 
 
 ## Puts a tool (or nothing, "") in a villager's right hand: "axe", "hammer", "hoe", "pickaxe",
@@ -478,6 +525,7 @@ static func set_carry(villager: Node3D, what: String) -> void:
 	if String(villager.get_meta("carry", "")) == what:
 		return
 	villager.set_meta("carry", what)
+	animator(villager).carrying = not what.is_empty()
 	var old := villager.get_node_or_null("Carry")
 	if old:
 		old.queue_free()
@@ -499,61 +547,10 @@ static func set_carry(villager: Node3D, what: String) -> void:
 			model = Kit.prop("pot_small", 0.12)
 	var grown := float(villager.get_meta("growth", 1.0))
 	model.name = "Carry"
+	# A child carries a child-sized load, held where the carry pose puts the arms.
+	model.scale *= grown
 	model.position = Vector3(0.0, 0.3 * grown, 0.11 * grown)
 	villager.add_child(model)
-
-
-## Working motion. stoop and swing still bend the spine and the right arm when no clip fits.
-## A swing above zero latches the chop clip until both amounts return to zero, so a woodcutter's
-## downbeat does not snap back to idle. "sit", "kneel", and "farm" play those clips and clear
-## the latch. Pass "" to leave the choice to stoop and swing.
-static func set_work(villager: Node3D, stoop: float, swing: float = 0.0, action: String = "") -> void:
-	var pose := villager.get_meta("pose") as VillagerPose
-	var tree := villager.get_node("Model/AnimationTree") as AnimationTree
-	if action == "sit":
-		villager.set_meta("chopping", false)
-		tree.set("parameters/work_kind/blend_amount", 0.0)
-		tree.set("parameters/action/blend_amount", 1.0)
-		_work_bend(pose, 0.0, 0.0)
-		return
-	if action == "kneel" or action == "farm":
-		villager.set_meta("chopping", false)
-		tree.set("parameters/work_kind/blend_amount", 1.0)
-		tree.set("parameters/labor/blend_amount", 1.0)
-		tree.set("parameters/ground/blend_amount", 0.0 if action == "kneel" else 1.0)
-		tree.set("parameters/action/blend_amount", 1.0)
-		_work_bend(pose, 0.0, 0.0)
-		return
-	var chopping := bool(villager.get_meta("chopping", false))
-	if swing > 0.001:
-		chopping = true
-	elif is_zero_approx(stoop) and is_zero_approx(swing):
-		chopping = false
-	villager.set_meta("chopping", chopping)
-	if chopping:
-		tree.set("parameters/work_kind/blend_amount", 1.0)
-		tree.set("parameters/labor/blend_amount", 0.0)
-		tree.set("parameters/action/blend_amount", 1.0)
-		_work_bend(pose, 0.0, 0.0)
-	else:
-		tree.set("parameters/action/blend_amount", 0.0)
-		tree.set("parameters/labor/blend_amount", 0.0)
-		tree.set("parameters/ground/blend_amount", 0.0)
-		_work_bend(pose, stoop, swing)
-
-
-static func _work_bend(pose: VillagerPose, stoop: float, swing: float) -> void:
-	pose.set_extra("Spine", stoop * 0.5)
-	pose.set_extra("Chest", stoop * 0.25)
-	pose.set_extra("RightArm", -swing * 1.4)
-	pose.set_extra("RightForeArm", -swing * 0.5)
-
-
-## Lying down (sick, or falling at death): 0 standing, 1 flat on the ground.
-static func set_lying(villager: Node3D, amount: float) -> void:
-	var model := villager.get_node("Model") as Node3D
-	model.rotation.x = -PI / 2.0 * amount
-	model.position.y = 0.05 * amount * float(villager.get_meta("growth", 1.0))
 
 
 static func _tool_model(tool: String) -> Node3D:
@@ -672,7 +669,7 @@ static func _tool_model(tool: String) -> Node3D:
 
 ## Starts a villager's clips at their own point, so a crowd doesn't move in lockstep.
 static func offset_time(villager: Node3D, seconds: float) -> void:
-	(villager.get_node("Model/AnimationTree") as AnimationTree).advance(seconds)
+	animator(villager).update(seconds)
 
 
 ## Build and proportions as bone scales, the elder's stoop as bends. Widening the spine is
@@ -719,259 +716,6 @@ static func _material(skin: String) -> ShaderMaterial:
 		material.next_pass = outline
 		_materials[skin] = material
 	return _materials[skin]
-
-
-static func _animations() -> AnimationLibrary:
-	if _library != null:
-		return _library
-	var library := AnimationLibrary.new()
-	for source: Array in [[IDLE_SOURCE, "Root|Idle", "idle"], [RUN_SOURCE, "Root|Run", "run"]]:
-		var scene := (source[0] as PackedScene).instantiate()
-		var animation := (scene.get_node("AnimationPlayer") as AnimationPlayer).get_animation(source[1]).duplicate() as Animation
-		animation.loop_mode = Animation.LOOP_LINEAR
-		library.add_animation(source[2], animation)
-		scene.free()
-	var kenney := MODEL.instantiate()
-	var kenney_skeleton := kenney.get_node("Root/Skeleton3D") as Skeleton3D
-	var bone_path := library.get_animation("idle").track_get_path(0).get_concatenated_names()
-	var names := _humanoid_names()
-	var walk_scene := WALK_SOURCE.instantiate()
-	var walk_skeleton := walk_scene.find_child("Skeleton3D", true, false) as Skeleton3D
-	var walk_player := _animation_player(walk_scene)
-	var baked_walk := _retarget(walk_skeleton, kenney_skeleton, walk_player.get_animation("Walk"), names, bone_path)
-	var baked_sit := _retarget(walk_skeleton, kenney_skeleton, walk_player.get_animation("Sitting_Idle"), names, bone_path)
-	var kneel_src := _source_clip(walk_player, "Fixing_Kneeling")
-	var baked_kneel: Animation
-	if kneel_src:
-		baked_kneel = _retarget(walk_skeleton, kenney_skeleton, kneel_src, names, bone_path)
-	walk_scene.free()
-	var chop_scene := CHOP_SOURCE.instantiate()
-	var chop_skeleton := chop_scene.find_child("Skeleton3D", true, false) as Skeleton3D
-	var chop_player := _animation_player(chop_scene)
-	var baked_chop := _retarget(chop_skeleton, kenney_skeleton, chop_player.get_animation("TreeChopping"), names, bone_path)
-	var farm_src := _source_clip(chop_player, "Farm_PlantSeed")
-	var baked_farm: Animation
-	if farm_src:
-		baked_farm = _retarget(chop_skeleton, kenney_skeleton, farm_src, names, bone_path)
-	chop_scene.free()
-	library.add_animation("walk", baked_walk)
-	library.add_animation("sit", baked_sit)
-	library.add_animation("chop", baked_chop)
-	if baked_kneel:
-		library.add_animation("kneel", baked_kneel)
-	if baked_farm:
-		library.add_animation("farm", baked_farm)
-	_walk_length = baked_walk.length
-	_walk_stride = _measure_stride(kenney_skeleton, baked_walk)
-	kenney.free()
-	_library = library
-	return library
-
-
-## Profile bone name to the Kenney deform bone. Empty map entries (no counterpart) are left out.
-static func _humanoid_names() -> Dictionary:
-	var map := HUMANOID as BoneMap
-	var profile := map.profile
-	var names: Dictionary = {}
-	for i: int in profile.bone_size:
-		var profile_name := String(profile.get_bone_name(i))
-		var skeleton_name := String(map.get_skeleton_bone_name(profile_name))
-		if not skeleton_name.is_empty():
-			names[profile_name] = skeleton_name
-	return names
-
-
-static func _animation_player(scene: Node) -> AnimationPlayer:
-	return scene.find_children("*", "AnimationPlayer", true, false)[0] as AnimationPlayer
-
-
-## Import drops a trailing _Loop. Try the bare name, then the name still on the file.
-static func _source_clip(player: AnimationPlayer, clip_name: String) -> Animation:
-	if player.has_animation(clip_name):
-		return player.get_animation(clip_name)
-	var looped := clip_name + "_Loop"
-	if player.has_animation(looped):
-		return player.get_animation(looped)
-	push_error("VillagerArt missing %s; player animations: %s" % [clip_name, player.get_animation_list()])
-	return null
-
-
-## Copies one Quaternius clip onto Kenney bone names and Kenney rest axes. Rotations follow
-## RetargetModifier3D's local-pose conversion, then a fixed turn from the source's Y-up model
-## space onto Kenney's Z-up skeleton. Position keys are stored divided by the source motion
-## scale; only the hips keep one, scaled by the ratio of hip heights.
-static func _retarget(source: Skeleton3D, target: Skeleton3D, anim: Animation, names: Dictionary, bone_path: String) -> Animation:
-	var out := Animation.new()
-	out.length = anim.length
-	out.loop_mode = Animation.LOOP_LINEAR
-	var ratio := _hip_ratio(source, target)
-	var motion := source.motion_scale if not is_zero_approx(source.motion_scale) else 1.0
-	var prepared: Dictionary = {}
-	var worst := 0.0
-	var worst_bone := ""
-	for profile_name: String in names:
-		var src_id := source.find_bone(profile_name)
-		var tgt_name := String(names[profile_name])
-		var tgt_id := target.find_bone(tgt_name)
-		if src_id < 0 or tgt_id < 0:
-			push_error("VillagerArt retarget missing %s -> %s" % [profile_name, tgt_name])
-			continue
-		var src_parent := _parent_global_rest(source, src_id)
-		var tgt_parent := _parent_global_rest(target, tgt_id)
-		var src_rest := source.get_bone_rest(src_id)
-		var tgt_rest := target.get_bone_rest(tgt_id)
-		# RetargetModifier3D treats both global rests as one model space. Kenney is Z-up, so
-		# rotate source model space (Y-up, facing +Z) onto the skeleton (Z-up, facing -Y) first.
-		var align := _model_basis()
-		var pre := tgt_parent.basis.inverse() * align * src_parent.basis
-		var post := src_rest.basis.inverse() * src_parent.basis.inverse() * align.inverse() * tgt_parent.basis * tgt_rest.basis
-		var rest_error := rad_to_deg((pre * src_rest.basis * post).get_rotation_quaternion().angle_to(tgt_rest.basis.get_rotation_quaternion()))
-		if rest_error > worst:
-			worst = rest_error
-			worst_bone = profile_name
-		prepared[profile_name] = {
-			"name": tgt_name, "pre": pre, "post": post,
-			"src_origin": src_rest.origin, "tgt_origin": tgt_rest.origin,
-		}
-	for track: int in anim.get_track_count():
-		var profile_name := String(anim.track_get_path(track).get_concatenated_subnames())
-		if not prepared.has(profile_name):
-			continue
-		var info: Dictionary = prepared[profile_name]
-		var type := anim.track_get_type(track)
-		var path := NodePath(bone_path + ":" + String(info["name"]))
-		var pre: Basis = info["pre"]
-		var post: Basis = info["post"]
-		if type == Animation.TYPE_ROTATION_3D:
-			var rot_track := out.add_track(Animation.TYPE_ROTATION_3D)
-			out.track_set_path(rot_track, path)
-			out.track_set_interpolation_type(rot_track, anim.track_get_interpolation_type(track))
-			var previous := Quaternion.IDENTITY
-			var started := false
-			for key: int in anim.track_get_key_count(track):
-				var src_q := anim.track_get_key_value(track, key) as Quaternion
-				var turned := (pre * Basis(src_q) * post).get_rotation_quaternion()
-				if started and previous.dot(turned) < 0.0:
-					turned = -turned
-				started = true
-				previous = turned
-				out.rotation_track_insert_key(rot_track, anim.track_get_key_time(track, key), turned)
-		elif type == Animation.TYPE_POSITION_3D and profile_name == "Hips":
-			var pos_track := out.add_track(Animation.TYPE_POSITION_3D)
-			out.track_set_path(pos_track, path)
-			out.track_set_interpolation_type(pos_track, anim.track_get_interpolation_type(track))
-			var src_origin: Vector3 = info["src_origin"]
-			var tgt_origin: Vector3 = info["tgt_origin"]
-			for key: int in anim.track_get_key_count(track):
-				var played := (anim.track_get_key_value(track, key) as Vector3) * motion
-				var origin := pre * ((played - src_origin) * ratio) + tgt_origin
-				out.position_track_insert_key(pos_track, anim.track_get_key_time(track, key), origin)
-	if worst > 1.0:
-		push_error("VillagerArt retarget rest error %.2f deg on %s" % [worst, worst_bone])
-	return out
-
-
-## Source clips are Y-up and face +Z. Kenney's skeleton is Z-up and faces -Y. X is the character's left on both.
-static func _model_basis() -> Basis:
-	var align := Basis()
-	align.x = Vector3(1.0, 0.0, 0.0)
-	align.y = Vector3(0.0, 0.0, 1.0)
-	align.z = Vector3(0.0, -1.0, 0.0)
-	return align
-
-
-## Hip height on the source is its Y (Y-up). On Kenney it is +Z, because the skeleton is Z-up.
-static func _hip_ratio(source: Skeleton3D, target: Skeleton3D) -> float:
-	var src_height := absf(source.get_bone_global_rest(source.find_bone("Hips")).origin.y)
-	var tgt_height := absf(target.get_bone_global_rest(target.find_bone("Hips")).origin.z)
-	if src_height < 0.00001:
-		return 1.0
-	return tgt_height / src_height
-
-
-static func _parent_global_rest(skeleton: Skeleton3D, bone: int) -> Transform3D:
-	var parent := skeleton.get_bone_parent(bone)
-	if parent < 0:
-		return Transform3D.IDENTITY
-	return skeleton.get_bone_global_rest(parent)
-
-
-## Peak-to-peak travel of the left foot against the hips, along the skeleton's facing axis (-Y).
-static func _measure_stride(skeleton: Skeleton3D, anim: Animation) -> float:
-	var hips := skeleton.find_bone("Hips")
-	var foot := skeleton.find_bone("LeftFoot")
-	var tracks: Dictionary = {}
-	for track: int in anim.get_track_count():
-		var bone := skeleton.find_bone(String(anim.track_get_path(track).get_concatenated_subnames()))
-		if bone < 0:
-			continue
-		if not tracks.has(bone):
-			tracks[bone] = {}
-		var slot: Dictionary = tracks[bone]
-		if anim.track_get_type(track) == Animation.TYPE_ROTATION_3D:
-			slot["rot"] = track
-		elif anim.track_get_type(track) == Animation.TYPE_POSITION_3D:
-			slot["pos"] = track
-	var lo := Vector3(999.0, 999.0, 999.0)
-	var hi := Vector3(-999.0, -999.0, -999.0)
-	var steps := 32
-	for step: int in steps:
-		var time := anim.length * step / float(steps)
-		skeleton.reset_bone_poses()
-		for bone: int in tracks:
-			var info: Dictionary = tracks[bone]
-			if info.has("rot"):
-				skeleton.set_bone_pose_rotation(bone, anim.rotation_track_interpolate(int(info["rot"]), time))
-			if info.has("pos"):
-				skeleton.set_bone_pose_position(bone, anim.position_track_interpolate(int(info["pos"]), time))
-		# Global pose is stale until the skeleton is in the tree, so walk the chain from the poses just set.
-		var rel := _bone_global(skeleton, foot).origin - _bone_global(skeleton, hips).origin
-		lo = lo.min(rel)
-		hi = hi.max(rel)
-	skeleton.reset_bone_poses()
-	return (hi - lo).y
-
-
-static func _blend_tree() -> AnimationNodeBlendTree:
-	if _tree == null:
-		_tree = AnimationNodeBlendTree.new()
-		var idle := AnimationNodeAnimation.new()
-		idle.animation = "idle"
-		var walk_clip := AnimationNodeAnimation.new()
-		walk_clip.animation = "walk"
-		var sit := AnimationNodeAnimation.new()
-		sit.animation = "sit"
-		var chop := AnimationNodeAnimation.new()
-		chop.animation = "chop"
-		var kneel := AnimationNodeAnimation.new()
-		kneel.animation = "kneel"
-		var farm := AnimationNodeAnimation.new()
-		farm.animation = "farm"
-		_tree.add_node("idle", idle)
-		_tree.add_node("walk_clip", walk_clip)
-		_tree.add_node("sit", sit)
-		_tree.add_node("chop", chop)
-		_tree.add_node("kneel", kneel)
-		_tree.add_node("farm", farm)
-		_tree.add_node("pace", AnimationNodeTimeScale.new())
-		_tree.add_node("walk", AnimationNodeBlend2.new())
-		_tree.add_node("ground", AnimationNodeBlend2.new())
-		_tree.add_node("labor", AnimationNodeBlend2.new())
-		_tree.add_node("work_kind", AnimationNodeBlend2.new())
-		_tree.add_node("action", AnimationNodeBlend2.new())
-		_tree.connect_node("pace", 0, "walk_clip")
-		_tree.connect_node("walk", 0, "idle")
-		_tree.connect_node("walk", 1, "pace")
-		_tree.connect_node("ground", 0, "kneel")
-		_tree.connect_node("ground", 1, "farm")
-		_tree.connect_node("labor", 0, "chop")
-		_tree.connect_node("labor", 1, "ground")
-		_tree.connect_node("work_kind", 0, "sit")
-		_tree.connect_node("work_kind", 1, "labor")
-		_tree.connect_node("action", 0, "walk")
-		_tree.connect_node("action", 1, "work_kind")
-		_tree.connect_node("output", 0, "action")
-	return _tree
 
 
 ## A node riding on the head bone whose units are world units on an adult-sized model (they grow
