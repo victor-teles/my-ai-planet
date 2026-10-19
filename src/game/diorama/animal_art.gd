@@ -50,7 +50,7 @@ const LOOKS := {
 		"coats": [Color(0.74, 0.50, 0.30), Color(0.58, 0.36, 0.22), Color(0.42, 0.28, 0.20)],
 		"belly": Color(0.92, 0.84, 0.70), "dark": Color(0.30, 0.20, 0.14), "pattern": 1, "marks": 0.4, "head": "antlers"},
 	"boar": {"female": "boar", "male": "boar", "height": 0.27,
-		"coats": [Color(0.50, 0.40, 0.32), Color(0.38, 0.29, 0.24), Color(0.26, 0.21, 0.19)],
+		"coats": [Color(0.62, 0.50, 0.40), Color(0.50, 0.38, 0.30), Color(0.36, 0.29, 0.25)],
 		"belly": Color(0.56, 0.46, 0.38), "dark": Color(0.16, 0.12, 0.11), "pattern": 2, "marks": 0.25, "head": "tusks"},
 	"wolf": {"female": "wolf", "male": "wolf", "height": 0.34,
 		"coats": [Color(0.70, 0.66, 0.60), Color(0.52, 0.50, 0.48), Color(0.34, 0.32, 0.32)],
@@ -197,6 +197,7 @@ static func make(looks: Dictionary) -> Node3D:
 	var skeleton := model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
 	var player := model.find_children("*", "AnimationPlayer", true, false)[0] as AnimationPlayer
 	player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	player.deterministic = false
 	var info: Dictionary = MODELS[model_id]
 	animal.set_meta("player", player)
 	animal.set_meta("skeleton", skeleton)
@@ -205,6 +206,14 @@ static func make(looks: Dictionary) -> Node3D:
 	animal.set_meta("head_bone", skeleton.find_bone(String(info["head"])))
 	_dress_head(model, looks)
 	return animal
+
+
+## The ink outline hulls of an animal, so a far-off one can drop them.
+static func inks_of(animal: Node3D) -> Array[Node3D]:
+	var found: Array[Node3D] = []
+	for node: Node in animal.find_children("*Ink", "MeshInstance3D", true, false):
+		found.append(node as Node3D)
+	return found
 
 
 ## Plays what the animal is doing ("idle", "graze", "walk", "run", "death") at a rate. Blends
@@ -220,9 +229,6 @@ static func play(animal: Node3D, what: String, rate: float = 1.0) -> void:
 	player.speed_scale = rate * float(rates.get(what, 1.0))
 	if player.current_animation == clip:
 		return
-	var anim := player.get_animation(clip)
-	if anim and what != "death":
-		anim.loop_mode = Animation.LOOP_LINEAR
 	player.play(clip, 0.25)
 
 
@@ -251,6 +257,12 @@ static func _template(model_id: String) -> PackedScene:
 	var info: Dictionary = MODELS[model_id]
 	var root := (load(String(info["file"])) as PackedScene).instantiate() as Node3D
 	_strip(root, root)
+	# Every clip but the death loops. Set once here: changing a shared clip later makes every
+	# animal's mixer rebuild its caches.
+	var source := root.find_children("*", "AnimationPlayer", true, false)[0] as AnimationPlayer
+	var death := String(CLIPS[String(info["clips"])]["death"])
+	for clip: StringName in source.get_animation_list():
+		source.get_animation(clip).loop_mode = Animation.LOOP_NONE if String(clip).ends_with(death) and not death.is_empty() else Animation.LOOP_LINEAR
 	var measure := _measure(root)
 	_measures[model_id] = measure
 	# World size of one mesh unit once the model stands at its usual height.

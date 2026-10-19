@@ -5,6 +5,7 @@ extends Node
 ## tribe), the miracle bar at the bottom, and modal cards over a dim scrim (a chronicle, a dilemma,
 ## the charts, the AI settings, the keys).
 ## Space: pause.  1-5: speed (or choose, while a dilemma card is up).
+## Click an animal: its card (species, age, what it is doing, its story; genes under Blood).
 ## Click a person: inspect them (their life, place in society, family, DNA, bonds and story).
 ## F: follow them.  Click a camp: inspect the tribe (its life, and its Society tab: government,
 ## rulers, factions, measures, culture, laws, crisis) and choose it for miracles.  Esc: close.
@@ -18,6 +19,7 @@ extends Node
 ##     Society), scrolled down that far
 ##   --evolution: open the evolution chart.  --society-chart[=measure]: open the society chart
 ##     (dystopia, freedom, control, inequality, fear, population or smog)
+##   --debug-animal=N [--blood]: open the N-th animal's card (its Blood open) and keep the camera on it
 ##   --yaw= --pitch= --distance=  --debug-dilemma=res://path/to/dilemma.json
 ##   --debug-chronicle=res://path/to/chronicle.json
 ##   --debug-stream=res://path/to/chronicle.json: the reveal as it streams in (half the text written)
@@ -63,6 +65,9 @@ var _miracles := MiracleBar.new()
 var _feed := LifeFeed.new()
 var _person_panel := PersonPanel.new()
 var _tribe_panel := TribePanel.new()
+var _animal_panel := AnimalPanel.new()
+var _animal_id := -1
+var _animal_follow := false
 var _evolution := EvolutionPanel.new()
 var _society_chart := SocietyPanel.new()
 var _reveal := RevealCard.new()
@@ -134,6 +139,10 @@ func _ready() -> void:
 		for frame: int in 3: # the panel knows how far it can scroll only after a layout pass
 			await get_tree().process_frame
 		_tribe_panel.scroll_to(int(options["scroll"]))
+	if options.has("debug-animal") and sim.state.animal_ids.size() > 0:
+		_inspect_animal(sim.state.animal_ids[clampi(int(options["debug-animal"]), 0, sim.state.animal_ids.size() - 1)])
+		_animal_panel.set_blood_open(options.has("blood"))
+		_animal_follow = true
 	if options.has("evolution"):
 		_evolution.visible = true
 	if options.has("society-chart"):
@@ -177,6 +186,8 @@ func _process(delta: float) -> void:
 			rig.focus = at
 			if rig.distance > FOLLOW_DISTANCE + 4.0:
 				rig.distance = move_toward(rig.distance, FOLLOW_DISTANCE, delta * 20.0)
+	elif _animal_follow and _animal_id != -1 and diorama.herds.position_of(_animal_id) != null:
+		rig.focus = diorama.herds.position_of(_animal_id)
 	else:
 		rig.focus = Vector3.ZERO
 
@@ -217,6 +228,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			if not _close_top_modal():
 				_inspect(-1)
 				_show_tribe("")
+				_inspect_animal(-1)
 		KEY_TAB:
 			_toggle_feed()
 		KEY_E:
@@ -237,12 +249,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			_keys.visible = not _keys.visible
 
 
-## A person under the cursor is inspected; otherwise a camp is selected and the tribe shown.
+## A person under the cursor is inspected, else an animal; otherwise a camp is selected and the tribe shown.
 func _on_world_click(screen_position: Vector2) -> void:
 	var person := diorama.pick_person(screen_position)
 	if person != -1:
 		_inspect(person)
 		return
+	var animal := diorama.herds.pick(diorama.camera_rig.camera, screen_position)
+	if animal != -1:
+		_inspect_animal(animal)
+		return
+	_inspect_animal(-1)
 	var tribe := diorama.pick_tribe(screen_position)
 	diorama.select_tribe(tribe)
 	_inspect(-1)
@@ -260,6 +277,7 @@ func _inspect(id: int) -> void:
 		_set_following(false)
 		return
 	_tribe_panel.visible = false
+	_inspect_animal(-1)
 	_person_panel.show_person(state, id)
 	_person_panel.visible = true
 	var p := state.index_of(id)
@@ -276,12 +294,29 @@ func _show_tribe(tribe: String) -> void:
 		_tribe_panel.visible = false
 		return
 	_person_panel.visible = false
+	_inspect_animal(-1)
 	_inspected_id = -1
 	diorama.focus_person(-1)
 	_set_following(false)
 	_tribe_panel.show_tribe(session.sim.state, tribe)
 	_tribe_panel.visible = true
 	diorama.select_tribe(tribe)
+
+
+## Opens the animal card on a living animal; -1 closes it.
+func _inspect_animal(id: int) -> void:
+	_animal_id = id
+	diorama.herds.focus(id)
+	if id == -1:
+		_animal_panel.visible = false
+		_animal_follow = false
+		return
+	_person_panel.visible = false
+	_tribe_panel.visible = false
+	_inspected_id = -1
+	diorama.focus_person(-1)
+	_set_following(false)
+	_animal_panel.show_animal(session.sim.state, id, diorama.herds)
 
 
 func _set_following(on: bool) -> void:
@@ -483,6 +518,8 @@ func _build_ui() -> void:
 	_tribe_panel.tribe_clicked.connect(_show_tribe)
 	_tribe_panel.closed.connect(_show_tribe.bind(""))
 	_hud.add_child(_tribe_panel)
+	_animal_panel.closed.connect(_inspect_animal.bind(-1))
+	_hud.add_child(_animal_panel)
 	_miracles.cast.connect(func(id: String) -> void: session.cast_miracle(id, diorama.selected_tribe()))
 	_miracles.clear_target.connect(func() -> void: diorama.select_tribe(""))
 	_hud.add_child(_miracles)
@@ -591,6 +628,7 @@ func _update_ui(delta: float) -> void:
 			_refresh_thought(p)
 	if _tribe_panel.visible:
 		_tribe_panel.refresh(state)
+	_animal_panel.refresh(state, diorama.herds)
 	if _evolution.visible:
 		_evolution.refresh(state)
 	if _society_chart.visible:
@@ -621,7 +659,7 @@ func _layout() -> void:
 	_feed.size = Vector2(LEFT_DOCK, _feed.wanted_height(feed_room))
 	_feed.position = Vector2(MARGIN, feed_top) + UiStyle.slide_of(_feed)
 	# Right dock: one inspector at a time, the full height.
-	for panel: Control in [_person_panel, _tribe_panel]:
+	for panel: Control in [_person_panel, _tribe_panel, _animal_panel]:
 		if panel.visible:
 			panel.size = Vector2(RIGHT_DOCK, bottom - top)
 			panel.position = Vector2(view.x - MARGIN - RIGHT_DOCK, top) + UiStyle.slide_of(panel)
@@ -651,7 +689,7 @@ func _center_in(modal: Control, room: Rect2) -> void:
 ## modal stack in opening order and puts the scrim under the top modal.
 func _animate_shown() -> void:
 	var slides := {_feed: Vector2(-UiStyle.SLIDE, 0), _person_panel: Vector2(UiStyle.SLIDE, 0),
-		_tribe_panel: Vector2(UiStyle.SLIDE, 0), _prophecy: Vector2(-UiStyle.SLIDE, 0)}
+		_tribe_panel: Vector2(UiStyle.SLIDE, 0), _animal_panel: Vector2(UiStyle.SLIDE, 0), _prophecy: Vector2(-UiStyle.SLIDE, 0)}
 	for control: Control in slides:
 		if control.visible and not _was_visible.get(control, false):
 			UiStyle.appear(control, slides[control])
