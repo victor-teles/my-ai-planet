@@ -24,9 +24,7 @@ Kenney's skeleton is Z-up and faces -Y. The source clips are Y-up and face +Z. T
 
 ## Playback
 
-One walk cycle moves the left foot 0.0086 skeleton units along the facing axis. At adult scale that is 0.17 world units in 1.333 seconds. `set_walking` sets the clip rate from the distance moved since the previous call, so the feet keep up with the body. `set_walking` clamps the rate between 0.2 and 12. A settlement walk at 0.42 world units per second plays the clip at about 3.2 times. A shorter villager takes faster steps because the stride scales with the model.
-
-`set_walking` still takes a 0 to 1 blend. The blend mixes the walk clip with idle. Run stays in the library and out of this blend. `set_work` plays chop once the swing is greater than zero, and holds that clip until both amounts return to zero. A stoop with no swing still bends the spine. `set_work(villager, stoop, swing, "sit")` plays the sit clip. Settlement never passes the `"sit"` action.
+Superseded by the full set: see [CLIPS.md](CLIPS.md). The spike's `set_walking` took the clip rate from the left foot's peak-to-peak travel against the hips (0.17 world units a cycle). The planted foot's speed gives 0.26, so the spike's walk played about 1.7 times too fast. `set_walking`, `set_work` and `set_lying` were replaced by `play_action`, `play_once` and `set_locomotion_speed`.
 
 ## What the stills show
 
@@ -40,4 +38,4 @@ Stills are in `docs/screenshots/anim-spike/`. Each frame is one villager from `V
 
 ## Files
 
-The clip files are `src/art/characters/quaternius/ual1_standard.glb`, `ual2_standard.glb`, `CREDITS.txt`, and the two humanoid bone maps. The Kenney map is `src/art/characters/kenney/humanoid.tres`. The Kenney FBX import files stay as they were. The bake and the playback are in `src/game/diorama/villager_art.gd`. The still tool is `src/tools/anim_spike.gd`.
+The clip files are `src/art/characters/quaternius/ual1_standard.glb`, `ual2_standard.glb`, `CREDITS.txt`, and the two humanoid bone maps. The Kenney map is `src/art/characters/kenney/humanoid.tres`. The Kenney FBX import files stay as they were. The bake is in `src/game/diorama/villager_clips.gd` and the playback in `villager_animator.gd`. The still tool is `src/tools/anim_spike.gd`. It now renders any clip of the set, and its spike stills are kept in `docs/screenshots/anim-spike/`.
