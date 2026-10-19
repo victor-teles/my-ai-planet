@@ -157,7 +157,7 @@ A data table, designed to grow into Era 2 *Bloom of Life* (species with gene tra
 - **Predators:** they take the slowest and weakest (by speed, health and age), which drives natural selection. Wolves follow the prey, so their numbers rise and fall with it.
 - **Movement:** herds move between grazing grounds and keep away from camps, as far as their wariness gene says.
 - **Every animal is an individual** (so each one keeps its own DNA). Totals are capped at about 150–300 animals per island, and most work runs monthly.
-- **Hunting becomes real.** See [Decisions](#decisions). A kill removes that animal and adds its meat. Skill, strength, tools, and the prey's speed and wariness decide the hunt. Boars and bears can injure hunters. A species can vanish from the valley, which gives the feed an event and the Oracle a prophecy.
+- **Hunting becomes real.** See [Decisions](#decisions). A kill removes that animal; the day's meat follows how full each herd still is. The prey's speed and wariness, and how dangerous it is, decide the kill; the camp's tools, chief and water scale the meat, as for every food job. Boars and bears can injure hunters. A species can vanish from the valley, which gives the feed an event and the Oracle a prophecy.
 - **Wolves** take livestock and, rarely, attack a person. Hunters and guards drive them off.
 
 ### B4 — Taming and breeding
@@ -229,3 +229,27 @@ Locked 2026-10-18.
 A census of seed 42 under the carcass rule starved the camp. The herd did not. Tribe 0 started at pop 43, food 1500, and 18 steppe prey (horse and goat). About 11 people held the hunter job, but stored hunter work was about 0.04 because labor above a 20% offtake was counted as foraging, so forage work was about 10. Food fell every winter month (1500, then 988, 574, 378) and hit 0 in month 10. Deep-winter forage is season 0.35 times a steppe rate of 0.85. The old hunter rate, 2.9 times hunt season 0.7 times hunt rate 1.2, is what used to carry winter. Prey stayed around 16–21. A fifth of 18 animals, at 24 meals, is under one meal a day and cannot close a deficit of several meals a day.
 
 Daily hunt food is `RATES["hunter"]` times the hunt season, the biome hunt rate, and herd fullness (living prey divided by the prey counted at seeding). An empty valley pays nothing. Kills are real, but a normal camp takes only a handful a year, and the death does not add a second pile of meat. A huge hunt work wipes a species and then the food stops. Foragers and fishers stay on their formulas. Milk and slaughter (B4) must not stack a second full food source on top of this rate.
+
+**Hunting, revised after a 100-year census (2026-10-18).** Under the rule above, seed 8 (taiga, one band of 24) died out by year 10, and seeds 2 (taiga) and 4 (jungle) and 42 (steppe) lost their people or their prey under the kind bot. The cause was the seeding, not the formula: one herd of 8 deer and a lone bear could not outbreed a camp's 2–4 kills a year plus old age. The deer were gone by year 8, herd fullness fell to 0, and a taiga camp (forage 0.75, hunt 1.25) lost about 45% of its food and starved over the next two winters. Where a herd survived those first years it then filled the island's whole 240 cap (240 boars, 235 goats), so births of every other species stopped, and the deer died out in five of six meadow runs.
+
+The rule now:
+- **Seeding.** Each wild species starts with three herds (`AnimalSystem.HERDS`), never fewer than 6 animals (`FEWEST`; three bears were one or two mothers). Taiga starts with 24 deer, 6 bears and 15 wolves.
+- **Room.** A species stops breeding at twice its seeded count (`ROOM`). One fast breeder can no longer fill the cap and end every other species' births. This stands in for the forage grid, which is not built yet.
+- **Fullness per species.** Each prey species pays its share of the seeded prey, times its living count over its seeded count, capped at full. A goat boom does not pay for lost horses, and a species that is gone gives no meat (`animal_tally[species]["meat"]` stops).
+- **Who is hunted.** Each day the hunters come on the tracks of one prey animal drawn at random, so a common species is met more often than a rare one. They chase the easiest of that kind (lowest speed plus wariness). The kill chance is multiplied by 1 minus the species' danger, so bears (0.7) and boars (0.4) are often let go.
+- **Scale.** Hunt meat is multiplied by the camp's wild crowding (hunters count with foragers again), tools, chief and water, like every other food job, as it was before animals. Only the old daily random factor (0.6 to 1.4) is gone, and herd fullness takes its place.
+- **Overhunting.** 200 hunters' work a day in a meadow camp ends a prey species within 10 years (`test_overhunting_ends_a_species_and_its_meat`). 8000 hunters' work a day ends one within 60 days.
+
+Census, 100 years, no player and the balance report's kind bot. Seeds: meadow 1 6 17 18 23 24; jungle 4 7 9 14 15 16; steppe 10 13 22 34 36 42; taiga 2 3 5 8 12 19 49 51 56 57; highland 11 21 37 47 55 59 62. Before is `a9c83a0`, before animals. "Food per work" is hunter food over hunter work-days.
+
+| Biome (runs) | Mean pop at 100, before → now | Runs at pop 0 | Hunger deaths | Hunter food | Food per work | Prey species lost |
+|---|---|---|---|---|---|---|
+| Meadow (12) | 156 → 132 | 0 → 0 | 247 → 274 | 7.09M → 7.51M (+6%) | 2.79 → 2.71 (−3%) | 0 |
+| Jungle (12) | 142 → 160 | 0 → 0 | 106 → 58 | 6.91M → 6.34M (−8%) | 2.56 → 2.58 (+1%) | 0 (big cats, a predator, gone in 3 runs) |
+| Steppe (12) | 124 → 105 | 1 → 0 | 480 → 630 | 10.04M → 9.71M (−3%) | 3.15 → 3.15 (0%) | 0 |
+| Taiga (20) | 134 → 162 | 0 → 0 | 431 → 273 | 19.47M → 17.38M (−11%) | 3.47 → 3.36 (−3%) | 0 |
+| Highland (14) | 104 → 92 | 0 → 3 | 510 → 473 | 8.79M → 7.67M (−13%) | 2.69 → 2.60 (−3%) | 0 |
+| All (70) | 132 → 133 | 1 → 3 | 1774 → 1708 | 52.3M → 48.6M (−7%) | 3.02 → 2.96 (−2%) | 0 |
+
+Food per unit of hunt work is within 3% of the old balance in every biome. Total hunter food is within 10% overall and in three biomes. It is 11% lower in taiga and 13% lower in highland, because fewer hunter work-days were worked there. The herds were full in those runs; the job split and the population took a different path. That spread is RNG noise: one or two extra draws at world creation move the old highland total by 6–9% and kill seed 47 in both modes. The three highland runs that died (seed 11 both modes, seed 37 with no player) starved with full herds. Every seeded prey species was alive at year 100 in all 70 runs, near twice its seeding.
+
