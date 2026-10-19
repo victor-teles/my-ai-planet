@@ -478,6 +478,10 @@ static func _comfort_of(mover: Dictionary) -> float:
 	return DEFAULT_COMFORT
 
 
+static func _is_self(mover: Dictionary, other: Dictionary) -> bool:
+	return mover.has("id") and other.has("id") and mover.id == other.id
+
+
 static func _cell_of(point: Vector3, cell: float) -> Vector2i:
 	return Vector2i(floori(point.x / cell), floori(point.z / cell))
 
