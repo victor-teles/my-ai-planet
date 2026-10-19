@@ -15,7 +15,7 @@ const FISH_SEASON: Array[float] = [0.5, 0.6, 0.9, 1.1, 1.2, 1.25, 1.25, 1.2, 1.1
 const FARM_SEASON: Array[float] = [0.0, 0.0, 0.15, 0.3, 0.45, 0.6, 0.9, 1.5, 2.4, 1.7, 0.4, 0.05]
 ## Food (or wood, stone) per unit of work per day, before seasons, tools and crowding.
 const RATES := {"forager": 2.3, "hunter": 2.9, "fisher": 2.6, "farmer": 4.4, "woodcutter": 1.6, "quarrier": 1.0, "miner": 0.6}
-const WILD_WORKERS := 110.0 ## valley-wide foragers at which wild food halves
+const WILD_WORKERS := 110.0 ## valley-wide foragers and hunters at which wild food halves
 const FARMERS_PER_FIELD := 3.0
 const SPOIL_PER_DAY := 0.0035
 const STORE_DAYS := 100.0 ## food a tribe can keep, per person
@@ -40,7 +40,7 @@ func update(state: WorldState) -> void:
 	var eaters := _eaters(state)
 	var wild := 0.0
 	for t: int in state.tribe_count():
-		wild += float(state.tribe_work[t].get("forager", 0.0))
+		wild += float(state.tribe_work[t].get("forager", 0.0)) + float(state.tribe_work[t].get("hunter", 0.0))
 	var wild_yield := 1.0 / (1.0 + wild / WILD_WORKERS)
 	for t: int in state.tribe_count():
 		_produce(state, t, wild_yield)
@@ -70,8 +70,9 @@ func _produce(state: WorldState, t: int, wild_yield: float) -> void:
 	var food := 0.0
 	food += float(work.get("forager", 0.0)) * RATES["forager"] * FORAGE_SEASON[m] * rain * wild_yield * WorldGen.rate(world, "forage")
 	var hunter_work := float(work.get("hunter", 0.0))
-	# Already added to the stores. A second add would pay for the same kill twice.
-	AnimalSystem.meat_from_hunt(state, t, hunter_work)
+	# Already added to the stores. A second add would pay for the same kill twice. Hunters share
+	# the woods with the foragers and the camp's tools, chief and water, like every food job.
+	AnimalSystem.meat_from_hunt(state, t, hunter_work, wild_yield * tools * gather * thirst)
 	food += float(work.get("fisher", 0.0)) * RATES["fisher"] * FISH_SEASON[m] * water_fish * WorldGen.rate(world, "fish")
 	var field_room := state.count_buildings(state.tribe_names[t], "field") * FARMERS_PER_FIELD
 	# Watered fields care less about the rain.

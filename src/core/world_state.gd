@@ -124,8 +124,10 @@ var next_animal_id: int = ANIMAL_ID_START
 ## Species seeded for this biome, and those already logged as gone. Empty on a save from before animals.
 var animal_seeded := PackedStringArray()
 var animal_wiped := PackedStringArray()
-## Prey alive at the end of seeding. A save from before this field loads 0.
-var animal_prey_seeded: int = 0
+## How many of each animal_seeded species were seeded, in the same order.
+var animal_seeded_counts := PackedInt32Array()
+## species -> {"born", "aged", "starved", "preyed", "hunted" (whole numbers), "meat" (food the hunters got)}
+var animal_tally: Dictionary = {}
 var _index_dirty := true
 
 ## The dead, by str(id): {"name", "family", "sex", "born", "died", "cause", "tribe", "mother",
@@ -1132,7 +1134,8 @@ func to_dict() -> Dictionary:
 		"next_animal_id": next_animal_id,
 		"animal_seeded": Array(animal_seeded),
 		"animal_wiped": Array(animal_wiped),
-		"animal_prey_seeded": animal_prey_seeded,
+		"animal_seeded_counts": Array(animal_seeded_counts),
+		"animal_tally": animal_tally.duplicate(true),
 		"events": events,
 		"next_event_id": next_event_id,
 		"gene_history": gene_history,
@@ -1266,7 +1269,16 @@ static func from_dict(data: Dictionary) -> WorldState:
 		state.next_animal_id = int(data["next_animal_id"])
 		state.animal_seeded = PackedStringArray(data.get("animal_seeded", []))
 		state.animal_wiped = PackedStringArray(data.get("animal_wiped", []))
-		state.animal_prey_seeded = int(data.get("animal_prey_seeded", 0))
+		# Saves from before the counts seeded one herd of each species.
+		var seeded_counts: Array = data.get("animal_seeded_counts", [])
+		for s: int in state.animal_seeded.size():
+			var herd := int(Species.get_species(state.animal_seeded[s]).get("herd", 0))
+			state.animal_seeded_counts.append(int(seeded_counts[s]) if s < seeded_counts.size() else herd)
+		var tally: Dictionary = data.get("animal_tally", {})
+		for species_id: String in tally:
+			var row: Dictionary = tally[species_id]
+			for key: String in AnimalSystem.TALLY:
+				AnimalSystem.tally(state, species_id, key, float(row.get(key, 0)))
 	state.next_event_id = int(data["next_event_id"])
 	state.influence = float(data["influence"])
 	state.kindness = int(data["kindness"])

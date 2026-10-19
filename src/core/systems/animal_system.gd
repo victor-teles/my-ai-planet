@@ -1,9 +1,19 @@
 class_name AnimalSystem
 extends SimSystem
 ## Once a month the wild animals lose condition, die, breed and are hunted by wolves and big cats.
-## Every day, hunters are paid by how much of the seeded herd is still alive. The system keeps no state of its own.
+## Every day, hunters are paid by how much of each seeded herd is still alive. The system keeps no state of its own.
 
 const CAP := 240 ## births stop here; hunting and predators can go below it
+## The valley holds this many herds of each wild species. One herd of eight deer could not
+## outbreed a camp's few kills a year plus old age, and the taiga starved when it was gone.
+const HERDS := 3
+## Never fewer than this of a species: three bears were one or two mothers, and died out by bad luck.
+const FEWEST := 6
+## A species stops breeding at this many times its seeded count: room for the herd to grow
+## past the hunt, without one fast breeder filling the island's cap and stopping every other birth.
+const ROOM := 2
+## Kept per species in WorldState.animal_tally, in this order. Meat is food; the rest are heads.
+const TALLY: Array[String] = ["born", "aged", "starved", "preyed", "hunted", "meat"]
 const ADULT_YEARS := 1
 const REST_AT := 80
 const REST_STEP := 5
@@ -48,7 +58,8 @@ static func seed(state: WorldState) -> void:
 	for species_id: String in Species.wild_in(String(state.world.get("biome", ""))):
 		var info := Species.get_species(species_id)
 		state.animal_seeded.append(species_id)
-		var herd := int(info["herd"])
+		var herd := maxi(int(info["herd"]) * HERDS, FEWEST)
+		state.animal_seeded_counts.append(herd)
 		var female := state.rng.chance(0.5)
 		var span := int(info["lifespan"]) * WorldState.DAYS_PER_YEAR
 		for _n: int in herd:
@@ -58,12 +69,12 @@ static func seed(state: WorldState) -> void:
 			var condition := state.rng.randi_range(70, 100)
 			var genome := Genetics.founder(state.rng, 0, table)
 			state.add_animal(species_id, sex, state.tick - age, genome, condition)
-	state.animal_prey_seeded = prey_count(state)
 
 
-## Food for this tribe today, paid once from the herd that was alive before any kill in this call.
+## Food for this tribe today, paid once from the herds that were alive before any kill in this call.
+## Scale is what the camp brings to every food job (crowding, tools, the chief, water); 1 in tests.
 ## An empty valley pays nothing and keeps no credit. The death is not a second pile of meat.
-static func meat_from_hunt(state: WorldState, tribe_index: int, hunter_work: float) -> float:
+static func meat_from_hunt(state: WorldState, tribe_index: int, hunter_work: float, scale: float = 1.0) -> float:
 	var prey := _hunt_target(state)
 	if prey == -1:
 		state.tribe_hunt_credit[tribe_index] = 0.0
@@ -73,11 +84,22 @@ static func meat_from_hunt(state: WorldState, tribe_index: int, hunter_work: flo
 	if hunter_work > 0.0:
 		var season := EconomySystem.HUNT_SEASON[state.month()]
 		var hunt_rate := WorldGen.rate(state.world, "hunt")
-		gained = hunter_work * EconomySystem.RATES["hunter"] * season * hunt_rate * hunt_fullness(state)
+		var shares := _hunt_shares(state)
+		var full := 0.0
+		for species_id: String in shares:
+			full += float(shares[species_id])
+		gained = hunter_work * EconomySystem.RATES["hunter"] * season * hunt_rate * scale * full
+		# Each herd's meat is its share of the day: a species that is gone feeds nobody.
+		for species_id: String in shares:
+			if float(shares[species_id]) > 0.0:
+				tally(state, species_id, "meat", gained * float(shares[species_id]) / full)
 		var table := Species.animal_table()
+		prey = _hunt_target(state, true)
 		var genome := state.animal_genomes[prey]
 		var evade := Genetics.express(genome, "speed", table) + Genetics.express(genome, "wariness", table)
-		var credit := state.tribe_hunt_credit[tribe_index] + hunter_work * _hunt_chance(evade)
+		# A dangerous animal (a bear, a boar) is stalked warily and often let go.
+		var risk := float(Species.get_species(state.animal_species[prey]).get("danger", 0.0))
+		var credit := state.tribe_hunt_credit[tribe_index] + hunter_work * _hunt_chance(evade) * (1.0 - risk)
 		var tribe := state.tribe_names[tribe_index]
 		while credit >= 1.0 and prey != -1:
 			credit -= 1.0
@@ -87,11 +109,12 @@ static func meat_from_hunt(state: WorldState, tribe_index: int, hunter_work: flo
 			if danger >= 0.4:
 				injured = state.rng.chance(danger * 0.15)
 			state.remove_animal(prey)
+			tally(state, species_id, "hunted", 1)
 			var data := {"species": species_id, "tribe": tribe}
 			if injured:
 				data["injured"] = true
 			state.log_event("hunt", data)
-			prey = _hunt_target(state)
+			prey = _hunt_target(state, true)
 		# An empty valley does not store the next kill.
 		state.tribe_hunt_credit[tribe_index] = snappedf(credit, WorldState.FLOAT_STEP) if prey != -1 else 0.0
 	state.tribe_food[tribe_index] += gained
@@ -111,6 +134,7 @@ static func predate(state: WorldState) -> void:
 	var speed := Genetics.express(state.animal_genomes[victim], "speed", Species.animal_table())
 	if speed > SLOW_PREY:
 		return
+	tally(state, state.animal_species[victim], "preyed", 1)
 	state.remove_animal(victim)
 
 
@@ -122,14 +146,66 @@ static func prey_count(state: WorldState) -> int:
 	return count
 
 
-## Living prey over the count at seeding. No prey is empty. A hand-built herd with no seeded count is full.
+## Each prey species' living count over its seeded count, capped at full, weighted by its share
+## of the seeded prey. A herd that grew past its seeding cannot stand in for one that is gone.
+## No prey is empty. A hand-built herd with no seeded count is full.
 static func hunt_fullness(state: WorldState) -> float:
-	var prey := prey_count(state)
-	if prey <= 0:
-		return 0.0
-	if state.animal_prey_seeded <= 0:
-		return 1.0
-	return clampf(float(prey) / float(state.animal_prey_seeded), 0.0, 1.0)
+	var full := 0.0
+	var shares := _hunt_shares(state)
+	for species_id: String in shares:
+		full += float(shares[species_id])
+	return full
+
+
+## All the food hunters have brought in, over every species.
+static func hunter_meat(state: WorldState) -> float:
+	var meat := 0.0
+	for species_id: String in state.animal_tally:
+		meat += float(state.animal_tally[species_id]["meat"])
+	return meat
+
+
+## Prey alive at seeding, summed over the seeded prey species.
+static func prey_seeded(state: WorldState) -> int:
+	var total := 0
+	for s: int in state.animal_seeded.size():
+		if is_prey_species(state.animal_seeded[s]):
+			total += state.animal_seeded_counts[s]
+	return total
+
+
+## species -> its part of the day's fullness. Seeded prey species only, in seeding order;
+## a hand-built world with nothing seeded counts every living prey species as one full herd.
+static func _hunt_shares(state: WorldState) -> Dictionary:
+	var alive := {}
+	for i: int in state.animal_ids.size():
+		if _is_prey(state, i):
+			alive[state.animal_species[i]] = int(alive.get(state.animal_species[i], 0)) + 1
+	var shares := {}
+	var seeded := prey_seeded(state)
+	if seeded <= 0:
+		for species_id: String in alive:
+			shares[species_id] = 1.0 / float(alive.size())
+		return shares
+	for s: int in state.animal_seeded.size():
+		var species_id := state.animal_seeded[s]
+		if is_prey_species(species_id):
+			shares[species_id] = float(mini(int(alive.get(species_id, 0)), state.animal_seeded_counts[s])) / float(seeded)
+	return shares
+
+
+## Add to a species' running tally (see TALLY). A species gets its row the first time it is counted.
+static func tally(state: WorldState, species_id: String, key: String, amount: float) -> void:
+	if not state.animal_tally.has(species_id):
+		var fresh := {}
+		for field: String in TALLY:
+			fresh[field] = 0.0 if field == "meat" else 0
+		state.animal_tally[species_id] = fresh
+	var row: Dictionary = state.animal_tally[species_id]
+	if key == "meat":
+		row[key] = snappedf(float(row[key]) + amount, WorldState.FLOAT_STEP)
+	else:
+		row[key] = int(row[key]) + int(amount)
 
 
 static func _predator_count(state: WorldState) -> int:
@@ -173,6 +249,7 @@ static func _deaths(state: WorldState) -> void:
 		var limit := float(info["lifespan"]) * lerpf(LIFE_LOW, LIFE_HIGH, longevity) * float(WorldState.DAYS_PER_YEAR)
 		var aged := float(state.tick - state.animal_born[i]) > limit
 		if state.animal_condition[i] <= 0 or aged:
+			tally(state, state.animal_species[i], "starved" if state.animal_condition[i] <= 0 else "aged", 1)
 			state.remove_animal(i)
 
 
@@ -195,6 +272,8 @@ static func _breed(state: WorldState) -> void:
 		# Wolf numbers follow the prey. A pack larger than the herd does not whelp, or it fills the cap and the prey never breed again.
 		if species_id in HUNTERS and prey_count(state) <= _predator_count(state):
 			continue
+		if living(state, species_id) >= _room(state, species_id):
+			continue
 		var sire := _sire(state, species_id)
 		if sire == -1:
 			continue
@@ -208,6 +287,24 @@ static func _breed(state: WorldState) -> void:
 			var heredity: Dictionary = Genetics.inherit(state.rng, state.animal_genomes[mother], state.animal_genomes[sire], table)
 			var sex := "f" if state.rng.chance(0.5) else "m"
 			state.add_animal(species_id, sex, state.tick, heredity["genome"], 60)
+			tally(state, species_id, "born", 1)
+
+
+## How many of a species the valley feeds: ROOM times its seeding, or the whole cap when it was never seeded.
+static func _room(state: WorldState, species_id: String) -> int:
+	var s := state.animal_seeded.find(species_id)
+	if s == -1:
+		return CAP
+	return state.animal_seeded_counts[s] * ROOM
+
+
+## How many of a species are alive.
+static func living(state: WorldState, species_id: String) -> int:
+	var total := 0
+	for other: String in state.animal_species:
+		if other == species_id:
+			total += 1
+	return total
 
 
 static func _sire(state: WorldState, species_id: String) -> int:
@@ -255,13 +352,24 @@ static func _slowest_prey(state: WorldState) -> int:
 
 
 ## Hunters chase the easiest animal: lowest speed plus wariness, then lowest condition.
-static func _hunt_target(state: WorldState) -> int:
+## Tracking, they come on one living prey animal drawn at random, so a common species is met
+## more often than a rare one, and chase the easiest of that kind. Without tracking, any species.
+static func _hunt_target(state: WorldState, track: bool = false) -> int:
 	var table := Species.animal_table()
+	var kind := ""
+	if track:
+		var prey: Array[int] = []
+		for i: int in state.animal_ids.size():
+			if _is_prey(state, i):
+				prey.append(i)
+		if prey.is_empty():
+			return -1
+		kind = state.animal_species[prey[state.rng.pick_index(prey.size())]]
 	var best := -1
 	var best_evade := 0.0
 	var best_condition := 0
 	for i: int in state.animal_ids.size():
-		if not _is_prey(state, i):
+		if not _is_prey(state, i) or (kind != "" and state.animal_species[i] != kind):
 			continue
 		var genome := state.animal_genomes[i]
 		var evade := Genetics.express(genome, "speed", table) + Genetics.express(genome, "wariness", table)
@@ -274,7 +382,11 @@ static func _hunt_target(state: WorldState) -> int:
 
 
 static func _is_prey(state: WorldState, index: int) -> bool:
-	var info := Species.get_species(state.animal_species[index])
+	return is_prey_species(state.animal_species[index])
+
+
+static func is_prey_species(species_id: String) -> bool:
+	var info := Species.get_species(species_id)
 	if String(info.get("diet", "")) == "predator":
 		return false
 	return "meat" in info.get("gives", [])
@@ -284,10 +396,6 @@ static func _note_wipes(state: WorldState) -> void:
 	for species_id: String in state.animal_seeded:
 		if state.animal_wiped.has(species_id):
 			continue
-		var living := 0
-		for i: int in state.animal_species.size():
-			if state.animal_species[i] == species_id:
-				living += 1
-		if living == 0:
+		if living(state, species_id) == 0:
 			state.animal_wiped.append(species_id)
 			state.log_event("hunt", {"species": species_id, "wiped": true})
