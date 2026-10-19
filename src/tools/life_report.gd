@@ -1,7 +1,8 @@
 extends SceneTree
 ## Year-by-year report of one world, no player: population, births and deaths (with causes),
 ## marriages, discoveries, buildings, food, jobs and the gene pool; then each tribe's society: its age,
-## government, freedom, control, inequality, fear, legitimacy, unrest, dystopia and laws.
+## government, freedom, control, inequality, fear, legitimacy, unrest, dystopia and laws; then the
+## wild animals: each species' count, births, deaths by cause, hunters' kills and the meat they gave.
 ##   godot --headless --path Godot -s res://tools/life_report.gd [-- seed=42 years=60 every=5]
 
 
@@ -58,6 +59,7 @@ func _initialize() -> void:
 				m["freedom"], m["control"], m["inequality"], m["fear"], m["legitimacy"], m["unrest"], m["dystopia"], laws,
 				" vassal of " + state.tribe_overlord[t] if state.tribe_overlord[t] else "", " crisis " + str(state.tribe_crisis[t]["type"]) if not state.tribe_crisis[t].is_empty() else "",
 			])
+		print("      animals %s  herds %d%%  hunter food to date %.0f" % [_living(state), roundi(100.0 * AnimalSystem.hunt_fullness(state)), AnimalSystem.hunter_meat(state)])
 	print("\nevents: ", counts)
 	print("death causes: ", causes)
 	print("generations: %d   frail: %s" % [People.max_generation(state), state.gene_history[-1] if not state.gene_history.is_empty() else {}])
@@ -70,5 +72,24 @@ func _initialize() -> void:
 			types[state.building_types[b]] = int(types.get(state.building_types[b], 0)) + 1
 		print("%s: %d people, knows %s, buildings %s, wood %.0f stone %.0f tools %.2f" % [state.tribe_names[t], state.tribe_population[t], Array(state.tribe_knowledge[t]), types, state.tribe_wood[t], state.tribe_stone[t], state.tribe_tools[t]])
 	print("pollution %.0f  destiny %s  progress %s" % [state.pollution, state.destiny, state.destiny_progress])
+	print("animals    living  seeded  born  aged starved preyed hunted   meat")
+	for species_id: String in state.animal_tally:
+		var row: Dictionary = state.animal_tally[species_id]
+		var seeded := state.animal_seeded.find(species_id)
+		print("  %-8s %6d  %6d %5d %5d %7d %6d %6d %6.0f%s" % [
+			species_id, AnimalSystem.living(state, species_id), state.animal_seeded_counts[seeded] if seeded != -1 else 0,
+			int(row["born"]), int(row["aged"]), int(row["starved"]), int(row["preyed"]), int(row["hunted"]), float(row["meat"]),
+			"  gone" if state.animal_wiped.has(species_id) else "",
+		])
+	print("hunter food %.0f" % AnimalSystem.hunter_meat(state))
 	print("ran in %.1f s" % ((Time.get_ticks_msec() - started) / 1000.0))
 	quit()
+
+
+## species -> living count, in the order they were seeded.
+static func _living(state: WorldState) -> Dictionary:
+	var living := {}
+	for species_id: String in state.animal_seeded:
+		living[species_id] = AnimalSystem.living(state, species_id)
+	return living
+

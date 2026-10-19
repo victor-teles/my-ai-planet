@@ -91,10 +91,15 @@ func test_wealth_is_inherited() -> void:
 
 func test_a_cruel_regime_breeds_protest_then_revolution_or_repression() -> void:
 	var outcomes := {}
+	var ruled := 0
 	for seed_value: int in [3, 5, 8, 13]:
 		var sim := Simulation.create(seed_value, 1)
 		var state := sim.state
 		sim.advance(25 * WorldState.DAYS_PER_YEAR)
+		# One small band can starve in a bad drought; a dead island has no regime to hate.
+		if state.tribe_count() == 0:
+			continue
+		ruled += 1
 		# A hated regime: everyone resents it, nobody believes in it.
 		for p: int in state.person_ids.size():
 			state.person_loyalty[p] = 5
@@ -110,6 +115,7 @@ func test_a_cruel_regime_breeds_protest_then_revolution_or_repression() -> void:
 		for event: Dictionary in state.events:
 			if int(event["id"]) >= seen and String(event["type"]) in ["protests", "concession", "crackdown", "revolution", "uprising_crushed"]:
 				outcomes[event["type"]] = true
+	assert_true(ruled >= 3, "most of the four bands live 25 years: %d" % ruled)
 	assert_true(outcomes.has("protests"), "anger fills the square: %s" % str(outcomes.keys()))
 	assert_true(outcomes.has("revolution") or outcomes.has("uprising_crushed") or outcomes.has("concession") or outcomes.has("crackdown"), "and the rulers answer it")
 
