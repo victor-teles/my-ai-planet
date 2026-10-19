@@ -2,12 +2,14 @@ extends SceneTree
 ## Headless balance report across many seeds, using offline AI and always taking the first dilemma choice.
 ## The last columns follow the long arc: the highest age reached, the darkest society at the end,
 ## revolutions, coups, and the island's destiny (and the year it came), if it met one.
+## Under each seed, its wild animals: per species the living count, births, deaths by cause
+## (age, starved, preyed on, hunted) and the hunters' meat; the row's meat is all hunter food, in thousands.
 ##   godot --headless --path Godot -s res://tools/balance_report.gd [-- years=300 seeds=6]
 
 const COLUMNS: Array[String] = [
 	"pop25", "pop50", "pop100", "pop_end", "tribes", "births", "deaths", "marriages", "discoveries", "buildings",
 	"droughts", "famines", "epidemics", "wars", "splits", "merges", "fulfilled", "broken", "dilemmas",
-	"age", "dystopia", "revolutions", "coups",
+	"age", "dystopia", "revolutions", "coups", "meat", "herds",
 ]
 
 
@@ -24,14 +26,17 @@ func _run() -> void:
 	var seeds := int(options["seeds"])
 	var totals := {}
 	print("A bot plays kindly: whenever it holds 6 Influence it sends Rain in a drought, else Harvest to the hungriest tribe.")
-	print("seed pop@25 pop@50 pop@100 pop@end tribes births deaths marry disc build drought famine fever wars split merge proph(F/B) dilem infl/yr drought% age dys revol coups destiny")
+	print("seed pop@25 pop@50 pop@100 pop@end tribes births deaths marry disc build drought famine fever wars split merge proph(F/B) dilem infl/yr drought% age dys revol coups meat(k) herds destiny")
 	for seed_value: int in range(1, seeds + 1):
 		var row := await _simulate(seed_value, years)
 		var destiny := String(row["destiny"])
+		var animals := String(row["animals"])
 		row.erase("destiny")
+		row.erase("animals")
 		for key: String in row:
 			totals[key] = float(totals.get(key, 0.0)) + float(row[key])
 		print(_line("%4d" % seed_value, row) + " " + destiny)
+		print("     " + animals)
 	var mean := {}
 	for key: String in totals:
 		mean[key] = float(totals[key]) / seeds
@@ -40,11 +45,12 @@ func _run() -> void:
 
 
 func _line(label: String, row: Dictionary) -> String:
-	return "%s %6.0f %6.0f %7.0f %7.0f %6.1f %6.0f %6.0f %5.0f %4.1f %5.0f %7.1f %6.1f %5.1f %4.1f %5.1f %5.1f %5.1f/%-5.1f %5.1f %7.2f %7.1f%% %3.1f %3.0f %5.1f %5.1f" % [
+	return "%s %6.0f %6.0f %7.0f %7.0f %6.1f %6.0f %6.0f %5.0f %4.1f %5.0f %7.1f %6.1f %5.1f %4.1f %5.1f %5.1f %5.1f/%-5.1f %5.1f %7.2f %7.1f%% %3.1f %3.0f %5.1f %5.1f %7.0f %5.2f" % [
 		label, row["pop25"], row["pop50"], row["pop100"], row["pop_end"], row["tribes"], row["births"], row["deaths"],
 		row["marriages"], row["discoveries"], row["buildings"], row["droughts"], row["famines"], row["epidemics"],
 		row["wars"], row["splits"], row["merges"], row["fulfilled"], row["broken"], row["dilemmas"],
 		row["influence_per_year"], row["drought_pct"], row["age"], row["dystopia"], row["revolutions"], row["coups"],
+		row["meat"], row["herds"],
 	]
 
 
@@ -99,5 +105,20 @@ func _simulate(seed_value: int, years: int) -> Dictionary:
 		"drought_pct": 100.0 * drought_months / (total_years * WorldState.MONTHS_PER_YEAR),
 		"age": Prophecy.measure("highest_age", state), "dystopia": Prophecy.measure("max_dystopia", state),
 		"revolutions": int(counts.get("revolution", 0)), "coups": int(counts.get("coup", 0)),
+		"meat": AnimalSystem.hunter_meat(state) / 1000.0,
+		"herds": AnimalSystem.hunt_fullness(state),
+		"animals": _animals(state),
 		"destiny": "%s (year %d)" % [DestinySystem.name_of(String(state.destiny["kind"])), int(state.destiny["year"])] if not state.destiny.is_empty() else "-",
 	}
+
+
+## One line per seed: "deer 46 (born 195, aged 111, starved 0, preyed 0, hunted 61, meat 193723)".
+static func _animals(state: WorldState) -> String:
+	var parts: Array[String] = []
+	for species_id: String in state.animal_tally:
+		var row: Dictionary = state.animal_tally[species_id]
+		parts.append("%s %d (born %d, aged %d, starved %d, preyed %d, hunted %d, meat %.0f)%s" % [
+			species_id, AnimalSystem.living(state, species_id), int(row["born"]), int(row["aged"]), int(row["starved"]),
+			int(row["preyed"]), int(row["hunted"]), float(row["meat"]), " gone" if state.animal_wiped.has(species_id) else "",
+		])
+	return "; ".join(parts)
