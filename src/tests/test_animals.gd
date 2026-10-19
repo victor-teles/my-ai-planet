@@ -2,6 +2,9 @@ extends TestCase
 ## Wild animals are individuals. Same seed, same herds; hunters are paid by how full each seeded
 ## herd still is, a kill removes that animal, and a species that is gone feeds nobody.
 
+## Tests that take over 15 seconds; scripts/test.sh --quick skips them.
+const SLOW := ["test_a_kind_god_keeps_the_herds_for_a_century"]
+
 
 func test_seed_42_herds_match_the_species_table() -> void:
 	var state := Simulation.create(42).state
@@ -54,7 +57,7 @@ func test_save_and_load_restores_the_herd() -> void:
 	var sim := Simulation.create(42)
 	sim.advance(WorldState.DAYS_PER_YEAR + 40)
 	assert_true(not sim.state.animal_tally.is_empty(), "a year in, something was born or died")
-	var path := "user://test_animals.json"
+	var path := scratch_path("test_animals.json")
 	assert_eq(sim.save_to(path), OK)
 	var loaded := Simulation.load_from(path)
 	assert_true(loaded != null, "save should load")

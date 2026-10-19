@@ -231,7 +231,7 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 - [ ] Intentions instead of random timers: a task queue that only urgent changes interrupt (no turning around at high speeds); work loops with a beginning, a middle and an end; groups at the fire, tag, look-at and idle details; reactions to births, deaths, rain, war and miracles; seasons change how people behave
 - [ ] Gene tables in `Genetics` (people unchanged, saves byte-identical), a species table by biome, and wild animals as individuals with two copies of 12 genes (size, speed, coat, horns, temper, wariness…)
 - [ ] `AnimalSystem`: forage, breeding seasons with herd sires, deaths from age, hunger, winter and predators (who take the slowest), hunting whose food follows herd fullness (each species' living count over its seeding, capped, weighted by its share; not a carcass worth 2.9; an empty valley pays nothing; a normal camp kills a handful a year; uncapped hunt work can wipe out a species and then its meat stops), three herds per species with room to grow to twice that, wolves following their prey. Done: seeding, room, breeding, deaths from age and winter, hunting and its tally. Still open: the forage grid, and predators that really catch prey (founders are all faster than `SLOW_PREY`, so wolves catch almost nothing)
-- [ ] Taming and breeding: herders, pens, artificial selection shown in the evolution chart, dogs from wolves, draft animals and herds as wealth in the later ages
+- [ ] Taming and breeding: herders, pens, artificial selection shown in the evolution chart, dogs from wolves, draft animals and herds as wealth in the later ages (waits for M2.8 W2: herders and pastures need regions)
 - [ ] Animals drawn (Quaternius' CC0 animal packs, looks from genes) with herds that flock, graze, watch and flee, hunts acted out, and an animal panel; animal prophecies, dilemmas and the Blessing of the Herds
   - Done (B5 view): every species drawn from CC0 models (`art/animals/`: Quaternius' Ultimate Animated Animal Pack, plus an OpenGameArt boar and goat; the big cat uses the fox, the bear the boar, sheep the goat) with looks from genes (size, coat, spots or stripes, antlers and horns, the white coat) in the toon shader and ink (`AnimalArt`); herds that graze head down, flock on `Steering` (cohesion, alignment, separation), look up and bolt by their wariness gene, young at their mothers' side, wolf packs that trot, rest and chase (`Herds`, level of detail for far and unseen animals); a click opens the animal card with its story and Blood (`AnimalPanel`, `--debug-animal=N`). Shots in `docs/screenshots/animals/`. Still to do: hunts acted out, herders and dogs, prophecies, dilemmas, the Blessing of the Herds, and 60 fps with 300 animals (about 46 fps at the overview and 38 close up on the dev machine, against 68 without animals, measured with `tools/animal_bench.gd` while other jobs shared the machine)
 
@@ -247,6 +247,19 @@ Each milestone ends with a **playable build** and a clear exit criterion. Time e
 - [ ] The Influence purse shows Kind, Harsh, or Unpredictable from the god's existing disposition
 
 **Exit:** after the opening and five minutes, a new player can say what the prophecy asks, how to cast a miracle on a tribe, and how fast a year passes. Shots in `docs/screenshots/`.
+
+### M2.8 — A whole planet (10–14 weeks)
+*Every seed makes a whole planet instead of one floating island: a flat open world that wraps east to west, with continents, seas, rivers and many biomes, that its peoples discover and change. See `docs/WORLD_MAP.md`. Decided 2026-10-18: a flat world, not a globe; plan before prototype; the No Man's Sky approach (land generated where needed, only changes saved, the sim works only where life is); each people sees only what it has discovered; `SAVE_VERSION` 6 drops older saves; M2.6 B4 (taming) waits for W2.*
+- [ ] W0 spike: profile the person tick (about 12 µs per person-day today), dump the planet layer to PNG for 20 seeds, fly a camera over streamed chunks and check frame times
+- [ ] W1 generation in three layers: a saved planet layer (recipe, plates, temperature, wind and rain shadows, great rivers, regions, ore provinces, founding peoples), a detail layer made per chunk from the seed and never saved (15 biomes, streams, resources), and a sparse change layer that is saved
+- [ ] W2 a sim with a sense of place: tribe homes and territories, rates from the tiles a tribe works, room from the land, rivers and lakes for water, climate and hazards by region, settling new land, meeting other peoples, animals per region (M2.6's forage grid), detail only in active regions, peoples no one has met simulated as groups above a population budget. An Island preset keeps today's balance
+- [ ] W3 discovery: known land per people, scouts, migrants, traders and sailors, maps shared between friends and tribes, first sightings named and remembered
+- [ ] W4 a living map: forest cover, soil, erosion, overgrazing and deserts, fire, mines, towns, roads and ruins, smoke that warms the climate and raises the sea; quiet land catches up by formula
+- [ ] W5 the view: a painted world map with overlays and cloud over the unknown, a zoom down to a region view streamed in rings of detail on worker threads, with a floating origin
+- [ ] W6 the player and the Oracle: miracles on known places and on the land, visions that steer discovery, prophecies and dilemmas about places, before-and-after maps in the reveal
+- [ ] W7 scale and balance: the sim spread over frames and threads without changing results, budgets for frame time and save size, map stats in the reports
+
+**Exit:** 20 seeds give 20 different worlds (at least four planet types, six biomes on every Normal planet); same seed, same map and history; the Island preset within 10% of today's balance; over 400 years peoples discover more of the planet and the map visibly changes around them; 60 fps with no streaming frame over 33 ms; a 400-year save under 10 MB.
 
 ### M3 — The AI Director, done right (3–4 weeks)
 - [x] Event pacing ("drama manager", `game/drama_manager.gd`): tension fed by weighted events with a 1.5-year half-life, a target curve that builds toward each prophecy's deadline and rests after a reveal, hard and per-category cooldowns (16–19 dilemmas a century, never closer than 2.5 years), a pacing hint in the prophecy and dilemma prompts; bursts of small events merged and rate-limited in the life feed and over the camps (`game/event_pacer.gd`)
@@ -340,6 +353,7 @@ Not planned: image-model textures (they break style coherence and add licensing 
 | Scope explosion (six eras!) | The vertical slice (one era) must be fun before any other era begins. Every era reuses the same loop |
 | Art too expensive for a small team | One strong art bible, modular kits per era, one shared CC0 character rig with painted skins per era instead of new models |
 | Latency kills the pace | Request the next prophecy or dilemma *ahead of time*, while the player is busy; stream long text |
+| A whole planet costs too much CPU, memory or disk | The No Man's Sky approach (`docs/WORLD_MAP.md`): land generated from the seed where needed and never stored, only changes saved, quiet land catches up by formula, chunks streamed on worker threads; people are the real cost, so measure the person tick first and simulate peoples no one has met as groups; the sim never looks at the camera |
 | Sim performance in GDScript | Data-oriented design (packed arrays, no Node per citizen), systems that update in batches at different rates, aggregate when zoomed out, and spread work across frames and threads (`WorkerThreadPool`). Profile at every milestone |
 
 ---
@@ -352,6 +366,7 @@ Not planned: image-model textures (they break style coherence and add licensing 
 | **Session shape** | The player chooses: Genesis Campaign, Era Run, or Sandbox | Every era must be startable from a generated world state (§4) |
 | **AI access** | Bring your own: API key, local model, or local AI CLI, plus offline | No backend to run; provider adapters and offline mode are core features, not extras (§2) |
 | **Tone** | Comes from the player's decisions (Disposition → tone level), with a fixed content ceiling | Tone is a prompt parameter and an art/music parameter (§4) |
+| **World** | A whole planet as a flat open world that wraps east to west, not one floating island or a globe; generated where needed, discovered by its peoples (2026-10-18) | The sim needs geography: tribes, rates, climate and animals live on tiles; the diorama becomes the zoomed-in region view; saves from before version 6 stop loading (`docs/WORLD_MAP.md`) |
 | **Language** | Typed GDScript only | Performance comes from data-oriented design and profiling, not from switching languages |
 
 **Still open:** the price point, and whether to use a Steam demo (Era 3 Era Run, offline mode) as the wishlist driver.

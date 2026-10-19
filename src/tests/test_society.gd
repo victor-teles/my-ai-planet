@@ -1,6 +1,9 @@
 extends TestCase
 ## Procedural islands, the ages, and how societies form, darken, break and end.
 
+## Tests that take over 15 seconds; scripts/test.sh --quick skips them.
+const SLOW := ["test_a_cruel_regime_breeds_protest_then_revolution_or_repression"]
+
 
 func test_seeds_make_different_islands() -> void:
 	var biomes := {}
@@ -252,7 +255,7 @@ func test_late_ages_stay_deterministic_through_save_and_load() -> void:
 			if int(Knowledge.TECHS[tech]["age"]) <= 3:
 				original.state.learn(t, tech)
 	original.advance(12 * WorldState.DAYS_PER_YEAR + 45)
-	var path := "user://test_society_save.json"
+	var path := scratch_path("test_society_save.json")
 	assert_eq(original.save_to(path), OK)
 	var loaded := Simulation.load_from(path)
 	assert_true(loaded != null, "the save loads")

@@ -1,5 +1,8 @@
 extends TestCase
 
+## Tests that take over 15 seconds; scripts/test.sh --quick skips them.
+const SLOW := ["test_same_seed_gives_same_world", "test_world_lives_and_grows"]
+
 const YEARS := 20
 
 
@@ -22,7 +25,7 @@ func test_different_seeds_diverge() -> void:
 func test_save_and_load_continue_identically() -> void:
 	var original := Simulation.create(7)
 	original.advance(6 * WorldState.DAYS_PER_YEAR + 17) # mid-month, mid-pregnancies
-	var path := "user://test_save.json"
+	var path := scratch_path("test_save.json")
 	assert_eq(original.save_to(path), OK)
 	var loaded := Simulation.load_from(path)
 	assert_true(loaded != null, "save should load")

@@ -1,5 +1,8 @@
 extends TestCase
 
+## Tests that take over 15 seconds; scripts/test.sh --quick skips them.
+const SLOW := ["test_offline_prophecies_are_always_playable"]
+
 const FakeProvider := preload("res://tests/fixtures/ai/fake_provider.gd")
 const CHRONICLE := {"title": "The Long Rain", "text": "The god sent rain when the springs failed, and the \"Magavik\" fields\ngrew green again.", "causes": ["the god sent rain"]}
 

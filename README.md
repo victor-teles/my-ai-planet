@@ -50,8 +50,10 @@ Environment variables win over the saved settings: `MYAIPLANET_AI=offline|anthro
 ## Tests
 
 ```sh
-scripts/test.sh                              # all tests, headless
+scripts/test.sh                              # all tests, headless, one process per file in parallel
+scripts/test.sh --quick                      # skip the slow century-long tests (SLOW in each file)
 scripts/test.sh determinism                  # only tests whose name matches
+scripts/test.sh -v                           # also list every passing test and its time
 MYAIPLANET_LIVE_AI=1 scripts/test.sh live_ai # real AI calls (costs money)
 ```
 

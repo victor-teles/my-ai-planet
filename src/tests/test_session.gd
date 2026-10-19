@@ -86,7 +86,7 @@ func test_muse_inspires_a_discovery() -> void:
 func test_prophecy_survives_save_and_load() -> void:
 	var session := _session(5)
 	await session.begin()
-	var path := "user://test_session_save.json"
+	var path := scratch_path("test_session_save.json")
 	session.sim.save_to(path)
 	var loaded := Simulation.load_from(path)
 	assert_eq(loaded.state.prophecy.text, session.sim.state.prophecy.text)

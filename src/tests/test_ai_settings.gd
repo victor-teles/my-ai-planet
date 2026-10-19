@@ -3,10 +3,10 @@ extends TestCase
 ## provider) and per-tier routing (AIRouter), with fake providers.
 
 const FakeProvider := preload("res://tests/fixtures/ai/fake_provider.gd")
-const PATH := "user://test_ai_settings.cfg"
 const ENV: Array[String] = ["MYAIPLANET_AI", "MYAIPLANET_MODEL", "MYAIPLANET_AI_BUDGET", "MYAIPLANET_GENTLE", "OPENAI_API_KEY"]
 const THOUGHT := {"thought": "The rain will come back, I am sure of it."}
 
+var _path := scratch_path("ai_settings.cfg")
 var _saved_env := {}
 
 
@@ -26,8 +26,8 @@ func _restore_env() -> void:
 
 
 func _remove_file() -> void:
-	if FileAccess.file_exists(PATH):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
+	if FileAccess.file_exists(_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(_path))
 
 
 func _prophecy(state: WorldState) -> Dictionary:
@@ -43,7 +43,7 @@ func _oracle(ai: AIProvider) -> Oracle:
 
 func test_settings_round_trip() -> void:
 	_remove_file()
-	var settings := AISettings.load_from(PATH)
+	var settings := AISettings.load_from(_path)
 	assert_true(not settings.saved, "no file yet: defaults")
 	assert_eq(settings.tiers, {"small": AISettings.AUTO, "medium": AISettings.AUTO, "large": AISettings.AUTO})
 	assert_eq(settings.cap_usd, AIBudget.DEFAULT_CAP_USD)
@@ -55,9 +55,9 @@ func test_settings_round_trip() -> void:
 	settings.max_calls = 40
 	settings.gentle = true
 	assert_eq(settings.save(), OK)
-	var raw := FileAccess.get_file_as_bytes(PATH).hex_encode()
+	var raw := FileAccess.get_file_as_bytes(_path).hex_encode()
 	assert_true(not raw.contains("sk-test-123".to_utf8_buffer().hex_encode()), "keys are not saved in plain text")
-	var loaded := AISettings.load_from(PATH)
+	var loaded := AISettings.load_from(_path)
 	assert_true(loaded.saved)
 	assert_eq(loaded.tiers, settings.tiers)
 	assert_eq(loaded.provider("ollama"), {
@@ -80,8 +80,8 @@ func test_bad_saved_values_fall_back() -> void:
 	file.set_value("routing", "large", "gemini")
 	file.set_value("budget", "cap_usd", -3.0)
 	file.set_value("budget", "max_calls", -1)
-	file.save(PATH)
-	var loaded := AISettings.load_from(PATH)
+	file.save(_path)
+	var loaded := AISettings.load_from(_path)
 	assert_eq(loaded.tiers, {"small": AISettings.AUTO, "medium": AISettings.AUTO, "large": "gemini"})
 	assert_eq(loaded.cap_usd, 0.0)
 	assert_eq(loaded.max_calls, 0)
@@ -91,7 +91,7 @@ func test_bad_saved_values_fall_back() -> void:
 func test_settings_build_one_provider_per_tier() -> void:
 	_clear_env()
 	var settings := AISettings.new()
-	settings.file_path = PATH
+	settings.file_path = _path
 	settings.tiers = {"small": "ollama", "medium": "offline", "large": "ollama"}
 	settings.set_provider("ollama", {"base_url": "http://127.0.0.1:9/v1", "models": {"small": "tiny:1b", "large": "big:8b"}})
 	var router := settings.build_provider() as AIRouter
@@ -239,7 +239,7 @@ func test_settings_panel_applies_to_the_running_oracle() -> void:
 	_remove_file()
 	var oracle := _oracle(OfflineTemplatesProvider.new())
 	var stored := AISettings.new()
-	stored.file_path = PATH
+	stored.file_path = _path
 	var panel := AISettingsPanel.new()
 	panel.open(oracle, stored)
 	assert_true(panel.visible)
@@ -248,7 +248,7 @@ func test_settings_panel_applies_to_the_running_oracle() -> void:
 	panel.use_for_every_task()
 	panel.apply_settings()
 	assert_eq(oracle.provider.get_id(), "ollama", "the running Oracle switched")
-	var saved := AISettings.load_from(PATH)
+	var saved := AISettings.load_from(_path)
 	assert_eq(saved.tiers, {"small": "ollama", "medium": "ollama", "large": "ollama"})
 	assert_eq(saved.provider("ollama")["base_url"], "http://127.0.0.1:9/v1")
 	panel.pick_provider("offline")
@@ -270,7 +270,7 @@ func test_picking_a_provider_routes_every_task_to_it() -> void:
 	OS.set_environment("OPENAI_API_KEY", "env-key")
 	var oracle := _oracle(OfflineTemplatesProvider.new())
 	var stored := AISettings.new()
-	stored.file_path = PATH
+	stored.file_path = _path
 	var panel := AISettingsPanel.new()
 	panel.open(oracle, stored)
 	var ids: Array = panel._catalog.map(func(entry: Dictionary) -> String: return String(entry["id"]))

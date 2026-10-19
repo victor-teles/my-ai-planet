@@ -61,7 +61,7 @@ func test_replies_are_copies() -> void:
 
 
 func test_persists_on_disk_when_asked() -> void:
-	var dir := "user://test_ai_cache/"
+	var dir := scratch_path("ai_cache/")
 	var cache := AICache.new(4, dir)
 	cache.store("k", {"thought": "Rain soon."})
 	var later := AICache.new(4, dir)

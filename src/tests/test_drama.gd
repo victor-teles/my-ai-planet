@@ -1,5 +1,8 @@
 extends TestCase
 
+## Tests that take over 15 seconds; scripts/test.sh --quick skips them.
+const SLOW := ["test_a_century_of_play_paces_its_dilemmas"]
+
 const YEAR := WorldState.DAYS_PER_YEAR
 
 var _next_id := 0

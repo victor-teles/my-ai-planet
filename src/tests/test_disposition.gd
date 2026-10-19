@@ -79,7 +79,7 @@ func test_disposition_survives_save_and_load() -> void:
 	sim.advance(WorldState.DAYS_PER_YEAR)
 	sim.state.influence = WorldState.MAX_INFLUENCE
 	Miracles.cast(sim.state, "rain")
-	var path := "user://test_disposition_save.json"
+	var path := scratch_path("test_disposition_save.json")
 	assert_eq(sim.save_to(path), OK)
 	var loaded := Simulation.load_from(path)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))

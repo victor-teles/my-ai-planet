@@ -3,6 +3,9 @@ extends TestCase
 ## tribe gets its look in all three, the two AIs' looks differ, the asset calls keep to their
 ## share of the budget, and the specs never change the sim.
 
+## Tests that take over 15 seconds; scripts/test.sh --quick skips them.
+const SLOW := ["test_two_ais_and_offline_give_one_island_three_coherent_looks"]
+
 const YEARS := 60
 const SEED := 42
 
