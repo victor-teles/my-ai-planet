@@ -15,8 +15,8 @@ extends Node
 ## frames' time added up, so motion keeps its speed. Countdowns start staggered by id, so the
 ## updates of a crowd spread over the frames instead of landing on the same one.
 
-const NEAR := 14.0 ## camera distance (world units) for an update every frame
-const MID := 26.0 ## every 2nd frame up to here, every 3rd beyond
+const NEAR := 10.0 ## camera distance (world units) for an update every frame
+const MID := 22.0 ## every 2nd frame up to here, every 3rd beyond
 const RATE_NEAR := 1
 const RATE_MID := 2
 const RATE_FAR := 3

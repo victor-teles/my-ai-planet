@@ -86,8 +86,7 @@ class Walker:
 	var lane_route: Array[Vector3] = []
 	var lane_goal := Vector3.INF
 	var stuck := 0.0 ## seconds barely moving while a footprint still holds the target
-	var steer_time := 0.0 ## seconds since the last steering step (far walkers step less often)
-	var turning := false ## the last steering step turned in place
+	var step_time := 0.0 ## seconds since the last step (far walkers step less often, see _process)
 
 
 var tribe_name: String
@@ -523,8 +522,14 @@ func _process(delta: float) -> void:
 	for walker: Walker in _walkers.values():
 		if walker.dying > 0.0:
 			_die_step(walker, delta)
-		else:
-			_step(walker, delta, time, neighbors, obstacles, grid)
+			continue
+		# Level of detail: a far or off-screen walker steps on the frames its animation updates,
+		# with the time since its last step, so it moves and animates at one cadence and the clip
+		# measures one whole step each time.
+		walker.step_time += delta
+		if VillagerArt.animator(walker.node).updates_this_frame():
+			_step(walker, walker.step_time, time, neighbors, obstacles, grid)
+			walker.step_time = 0.0
 
 
 func _die_step(walker: Walker, delta: float) -> void:
@@ -563,19 +568,12 @@ func _step(walker: Walker, delta: float, time: float, neighbors: Array, obstacle
 	var settled := walker.phase in ["work", "rest", "lie", "meet", "drop"]
 	var turn_in_place := false
 	if not settled and distance > 0.04:
-		# Level of detail: far or off-screen walkers steer on the frames their animation updates,
-		# with the time since their last step, so the clip measures one whole step each time.
-		walker.steer_time += delta
-		if VillagerArt.animator(node).updates_this_frame():
-			var stepped := _steer(walker, _aim(walker), neighbors, obstacles, walker.steer_time, grid)
-			walker.turning = bool(stepped.turn_in_place)
-			walker.steer_time = 0.0
-		turn_in_place = walker.turning
+		var stepped := _steer(walker, _aim(walker), neighbors, obstacles, delta, grid)
+		turn_in_place = bool(stepped.turn_in_place)
 		to_target = walker.target - node.position
 		to_target.y = 0.0
 		distance = to_target.length()
 	elif not walker.mover.is_empty():
-		walker.steer_time = 0.0
 		walker.mover["velocity"] = Vector3.ZERO
 		walker.mover["position"] = node.position
 		walker.mover["heading"] = node.rotation.y

@@ -87,15 +87,24 @@ The tree (`AnimationMixer` callback mode manual) and the skeleton's modifiers (`
 
 | Where the villager is | Update every |
 |---|---|
-| On screen, nearer than 14 units to the camera | frame |
-| On screen, nearer than 26 units | 2nd frame |
+| On screen, nearer than 10 units to the camera (the follow camera sits at 9) | frame |
+| On screen, nearer than 22 units | 2nd frame |
 | On screen, further | 3rd frame |
 | Off screen | 4th frame |
 
-Each update passes the frames' time added up. The first countdown is staggered by id, so 40 villagers made on one frame update 10 per frame (`test_lod_updates_are_staggered`). Settlement steps a walker's steering on the frames its animator updates, with the time since the last step. A far walker therefore moves and animates at one cadence, and each update measures exactly one step. Tree parameters are set only when they change. The camera frustum is read once a frame for all villagers.
+Each update passes the frames' time added up. The first countdown is staggered by id, so 40 villagers made on one frame update 10 per frame (`test_lod_updates_are_staggered`). Settlement runs a walker's behavior step (planning, steering, timers, clip requests) on the frames its animator updates, with the time since the last step. A far walker therefore moves and animates at one cadence, each update measures exactly one step, and the camp's per-frame cost falls with the walkers' rates. Tree parameters are set only when they change. The camera frustum is read once a frame for all villagers.
 
 Steering also got cheaper. The camp builds one neighbor grid a frame (`Steering.neighbor_grid`) instead of one per walker, so the cost is no longer O(n²). The pair loops read packed arrays, and obstacles out of reach are dropped before the per-obstacle math. All of these give the same results (`test_shared_grid_matches`, `test_steering`).
 
 ## Benchmark
 
-`scripts/fps_bench.sh` (`src/tools/fps_bench.gd`) opens a 1600x1000 window with vsync off. It builds seed 42 after 30 years (three camps) and fills the camps with exactly 300 villagers: working at every trade, idling, resting, teaching, mourning and playing. It then prints the average fps, the slowest second, the 1% low, and the milliseconds spent in the camps' behavior, the sync, and the render. Use `--probe=nosettle` to stop behavior and `--probe=noanim` to stop animation. See the M2.6 report in the roadmap for numbers.
+`scripts/fps_bench.sh` (`src/tools/fps_bench.gd`) opens a 1600x1000 window with vsync off. It builds seed 42 after 30 years (three camps) and fills the camps with exactly 300 villagers: working at every trade, idling, resting, teaching, mourning and playing. It then prints the average fps, the slowest second, the 1% low, and the milliseconds spent in the camps' behavior, the sync, and the render. Use `--probe=nosettle` to stop behavior and `--probe=noanim` to stop animation.
+
+Results with 300 villagers, on an M3 shared with other Godot jobs (load average 8 to 20, so runs vary a lot):
+
+| | Default view (distance 30) | Close-up of one camp (`--focus --distance=12`) |
+|---|---|---|
+| Before (4306eb9) | 13.5 to 14.7 fps average, slowest second 9.6 to 13.4 | 13.6 to 15.0 |
+| After | 51 to 96 fps average (best: 96, slowest second 94) | 40 to 75 |
+
+Before the change, the camps' behavior step took 52 to 65 ms a frame (the per-walker neighbor hash) and the animation about 9 ms. After it, the behavior step takes 8 to 10 ms and animation with rendering about 5 ms.
