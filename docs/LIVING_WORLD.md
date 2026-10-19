@@ -1,0 +1,255 @@
+# A living world: villagers who move like people, and animals with DNA
+
+This is the plan for milestone M2.6 in the [roadmap](../ROADMAP.md). It has two parts:
+
+- **Part A:** villagers move and act like people, not robots. This part is view only: it never touches the simulation.
+- **Part B:** animals, simulated with the same DNA rules as people (see [LIFE_SIM.md](LIFE_SIM.md)).
+
+Part A's steering module (A2) is shared with Part B's herds (B5). Part B's core work (B1–B4) is headless, so it can run in parallel with Part A.
+
+---
+
+## Part A — Villagers who move like people
+
+### Why the villagers look robotic today
+
+| # | Cause | Where |
+|---|---|---|
+| 1 | **Two clips only.** A walk is 40% of a run blended with the idle at 70% speed, so the gait floats and the feet slide. Working, sitting, kneeling, talking and carrying are bone bends driven by sine waves. | `VillagerArt` (`WALK_BLEND`, `WALK_PACE`), `set_work` |
+| 2 | **Everyone moves the same way.** One walk speed (0.42) for a child, a stout elder and a grieving widow. DNA, age, health and mood shape how people look but not how they move. | `Settlement.WALK_SPEED` |
+| 3 | **Straight lines at a constant speed.** People slide straight to a random point. They walk through each other, through houses, walls and the fire, then stop dead. `_face()` snaps them to face a new direction in one frame. | `Settlement._step`, `_face` |
+| 4 | **Work in lockstep.** Every woodcutter swings at the same rate (`sin(t * 5.0)`) with no strike, no pause and no result. Gatherers bob at a fixed rate. | `Settlement._step`, "Working motion" |
+| 5 | **No intention.** Each step is a random target and a random timer. Any change from the sim (activity, job or home) clears the current plan, so at higher speeds people often turn around halfway through a walk. | `_sync_person` sets `walker.phase = ""` |
+| 6 | **A dead idle.** Standing people play the same idle clip. They never glance at anyone, shift their weight or react to a birth, a death, rain or a war. A meeting is two people walking to a midpoint and standing still under a label. | `_plan`, `meet` |
+
+### A1 — A real animation set (the biggest single win)
+
+- Retarget the **Quaternius Universal Animation Library** (CC0, made for humanoid retargeting and Mixamo-style rigs) onto Kenney's `characterMedium` skeleton. Use Godot's import-time `BoneMap` with `SkeletonProfileHumanoid`. The painted skins, DNA looks and `VillagerPose` bone scales stay as they are.
+  - First, make a small spike: retarget walk, sit and chop, then render close-ups of a slim woman, a stout man, an elder and a child. Check the hands, the feet and the scaled heads.
+  - If the retarget fails, fall back to the library's own rig with our skins painted onto it. That costs a skin repaint, so it is the second choice.
+- Clips needed: 2–3 idles, walk, jog, run, carry-walk (a load in both arms), sit on the ground, sit on a bench or log, kneel and gather, chop, hammer, hoe or dig, pick up and put down, talk gestures, wave, laugh or cheer, mourn, pray, lie or sleep, push or fight, and play for children (skip, jump, tag).
+- Replace the two-clip `AnimationTree` with a state machine. Locomotion becomes a 1D blend space keyed on real speed, and the clip rate follows the distance moved, so **feet never slide**.
+- Keep `VillagerPose` for build, stoop and the elder's bend. Hand-made bends stay only where no clip fits.
+- Level of detail: villagers far from the camera or off screen update their animation every 2nd–4th frame and skip look-at. Target: 300 villagers at 60 fps (today it is about 65 fps with 170).
+
+### A2 — Movement: steering, lanes and a gait from DNA
+
+- **A shared steering module** (`game/diorama/steering.gd`, reused by animals in B5). It covers:
+  - Acceleration, and an *arrive* behavior that eases into a stop.
+  - A turn rate that slows people as they turn. A turn of more than 120° plays a turn in place.
+  - Separation from nearby walkers, using a spatial hash per settlement.
+  - Avoiding obstacles: building footprints (`BuildingArt.SIZES`), the fire and the wall.
+- **Village lanes:** a small graph per camp (the ring streets, spokes between the rings and gates in the wall), with A* over about 20–40 nodes. People follow streets and use gates instead of cutting through houses. Paths into the wild are curved with 1–2 waypoints that avoid trees and rocks.
+- **Gait from the person** (a profile computed once per walker and refreshed with `sync`):
+
+  | Input | Effect |
+  |---|---|
+  | Age | Children skip and run. Elders walk slowly, stoop and sometimes pause. |
+  | Height gene | A longer stride and a little more speed. |
+  | Build | Stout people take heavier, slower steps. |
+  | Health or sickness | A slower walk, and a limp for the sick and injured. |
+  | Mood | Sad people walk slowly with the head down. Happy people walk with a bounce. |
+  | Traits | Proud people walk upright, the shy keep their distance, and fierce or brave people walk briskly. |
+  | Load | Stone is heavier than wood, and wood heavier than food. A load uses the carry-walk clip and slows the walk. |
+
+- Per-walker noise (a seeded drift, not white noise) on speed, pauses and timing, so no two people move in step.
+
+### A3 — Behavior: intentions, not random timers
+
+- **A task queue per walker** (still visual only). A task is *go → do → come back*. The walker commits to the current task. A change from the sim queues the next plan instead of clearing the current one. Only urgent changes interrupt: death, falling sick, arrest, a fight or the call to war. This fixes the turning-around at high speeds.
+- **Work loops with a beginning, a middle and an end:**
+  - *Woodcutter:* walks to the tree, squares up to it, makes 3–6 strokes with an uneven rhythm, then pauses or wipes their brow. The tree shakes and chips fly. They pick up a log and carry it home.
+  - *Builder:* carries materials from the store to the site, kneels, hammers and steps back to look.
+  - *Farmer:* walks along the rows and hoes, with the season shown (sowing, tending, harvest).
+  - *Hunter:* leaves in a pair or a group and crouches to stalk. With Part B, hunters track a real animal.
+  - *Forager, healer, scholar, merchant, guard:* each gets 2–3 distinct actions instead of one bend.
+- **Life between work:**
+  - Groups of 3–5 form at the fire and sit in a circle. They take turns to talk with gestures and laugh.
+  - Friends walk together. Couples sit close.
+  - Children play tag (one child is "it").
+  - Parents pick up their toddlers.
+  - Elders teach a ring of youths.
+- **Idle details:** look-at (the head bone turns toward a nearby walker, the fire or the person the player is inspecting), weight shifts, stretches and yawns. These are staggered so they never sync.
+- **Reactions to what the sim reports:**
+
+  | Event | Reaction |
+  |---|---|
+  | A birth | The family gathers. |
+  | A death | People nearby turn. Mourners kneel at the grave. |
+  | Rain | People look up and hurry under a roof. |
+  | Drought | Shoulders slump. |
+  | War | Fighters gather at the fire, then march out together. |
+  | Midsummer gathering | A dance around the fire. |
+  | A miracle | Everyone turns toward it. |
+
+- **Seasons instead of a day-night cycle:** a sim day lasts under a second, so a day-night cycle would only flicker. In winter people huddle by the fire, walk faster and fewer go out. In summer they linger outside.
+
+### A4 — Polish
+
+- Dust puffs when people run, a sway on held tools, small anticipation and settle at the start and end of a move. Footstep and work-sound hooks are ready for M6 audio.
+- A follow-camera check: following any villager for a minute should feel like watching a person.
+
+### Exit for Part A
+
+Follow any villager for 60 seconds at each speed. They never walk through a house or another person, never turn around without a reason, and their feet never slide. Two people with the same job never move in step. The motion shows that elders, children, the sick and the grieving are different people. Before and after recordings go in `docs/screenshots/`.
+
+**Tests:**
+- Headless planner tests: a non-urgent sim change does not cancel a walk, and an urgent one does.
+- Steering tests: in a scripted crowd of 40, no two walkers overlap for more than a moment and nobody ends up inside a building footprint.
+- An fps benchmark with 300 villagers.
+
+---
+
+## Part B — Animals with the same DNA rules
+
+**The same principles as people.**
+- Every animal is simulated in `core/`, in packed arrays in `WorldState`, drawn from the seeded `SimRng` and saved.
+- Each gene has two copies (one from each parent), inheritance and mutation work the same way, and some genes are recessive.
+- **Genes only nudge.** Natural selection is never scripted.
+- The view only draws.
+
+### B1 — General genetics
+
+`Genetics` hard-codes the human gene list today. Change its functions to take a **gene table** (genes, recessive rules, mutation chances). The people table is the current list, unchanged, so **existing saves, genomes and the determinism test stay byte-identical**. A golden test checks this: the same seed gives the same world hash as before the change.
+
+### B2 — Species (`core/species.gd`)
+
+A data table, designed to grow into Era 2 *Bloom of Life* (species with gene traits and food webs). Per species, it records:
+
+- Diet (grazer, browser, predator or omnivore), size, herd or pack size, and home biomes.
+- Breeding season and litter size, and lifespan.
+- What the species gives (meat, hide, wool, milk, draft power), how dangerous it is, and whether it can be tamed.
+
+**Starter wild species by biome:**
+
+| Biome | Species |
+|---|---|
+| Meadow | Deer, boar, wolf |
+| Steppe | Wild horse, goat, wolf |
+| Jungle | Boar, a big cat |
+| Taiga | Deer, wolf, bear |
+| Highland | Goat, wild sheep |
+
+**Domestic species, which come from taming:** sheep, goat, cattle, pig, horse, and dog (from the wolf).
+
+**Animal genes** (two copies each):
+
+| Gene | Shows as | Does |
+|---|---|---|
+| size | Body scale | Meat yield, strength, food needed |
+| speed | | Escaping predators and hunters; chasing for predators |
+| coat | Coat thickness and color | Surviving winter (taiga) and heat (jungle) |
+| pattern | Spots and stripes | Looks only; drifts |
+| horns | Antler or horn size | Defense, winning mates |
+| fertility | | Litter size and how often |
+| longevity | | Aging curve |
+| hardiness | | Disease, hunger |
+| temper | | Wild ↔ tame. The key to taming. |
+| wariness | | How far away it flees (flight distance) from people |
+| yield | | Wool, milk, eggs (domestic lines) |
+| white | A white coat, only with two copies (recessive) | Looks only. A rare "white stag" the Oracle can notice. |
+
+### B3 — The animal system (`core/systems/animal_system.gd`)
+
+- **Forage:** a coarse grid of the island's grazing, which rain regrows. Herds eat it, and fields, camps and felled woods shrink it. Grazing sets each animal's condition.
+- **Births:** in the breeding season, the mother is paired with a herd sire. The sire is the strongest by size and horns, so sexual selection happens on its own. Inheritance and mutation use B1's code.
+- **Deaths:** from age, starvation, winter (where coat matters), disease, predators and hunters.
+- **Predators:** they take the slowest and weakest (by speed, health and age), which drives natural selection. Wolves follow the prey, so their numbers rise and fall with it.
+- **Movement:** herds move between grazing grounds and keep away from camps, as far as their wariness gene says.
+- **Every animal is an individual** (so each one keeps its own DNA). Totals are capped at about 150–300 animals per island, and most work runs monthly.
+- **Hunting becomes real.** See [Decisions](#decisions). A kill removes that animal; the day's meat follows how full each herd still is. The prey's speed and wariness, and how dangerous it is, decide the kill; the camp's tools, chief and water scale the meat, as for every food job. Boars and bears can injure hunters. A species can vanish from the valley, which gives the feed an event and the Oracle a prophecy.
+- **Wolves** take livestock and, rarely, attack a person. Hunters and guards drive them off.
+
+### B4 — Taming and breeding
+
+- New techs: *animal taming* in the First Fires age, and *husbandry* together with farming. They unlock the **herder** job, pens and pastures.
+- **Taming** captures the calmest animals of a wild herd (the ones with a low temper gene). **Breeding** picks parents toward the tribe's goal: calmer, bigger, more wool or more milk. That is **artificial selection the player can watch** in a new animal tab of the evolution chart (E), as domestic sheep drift away from wild ones over the decades.
+- **Dogs:** wolves that hang around a camp and have a low temper gene become dogs. They follow their owners and help hunters.
+- **The later ages:**
+  - Oxen and horses speed up farming and building.
+  - Horses add riders in war.
+  - Herds are wealth and pass down to heirs, linking to `SocietySystem`, nobles and the bonded.
+  - Optional law hooks: a sacred animal under a theocracy, a hunting ban for commoners.
+
+### B5 — The view
+
+- **Models:** Quaternius' CC0 low-poly animal packs, which include an animated farm-animal pack (cow, pig, horse, llama, sheep, dog) and a wild pack with a wolf. Before building on them, check which species and clips (idle, walk, run, eat, death) the downloads really contain. A deer or stag still has to be found. All models are restyled with the toon shader and ink outline, like the Kenney props.
+- **Looks from genes,** as with `VillagerArt.appearance_of`: size, coat color and pattern, antlers and horns, and the white coat.
+- **Herd behavior:** flocking (cohesion, separation, alignment) on the shared steering module from A2.
+  - Grazing with the head down.
+  - Alert with the head up when a hunter is within the wariness distance.
+  - Fleeing at a run.
+  - The young following their mothers.
+  - Wolves trotting in a pack and chasing.
+- **Hunts acted out:** hunters stalk, throw, the animal falls, and they carry it home. A herder leads the livestock to pasture and back. Dogs trot beside their owners.
+- **An animal panel** when you click an animal, following the short card in [INTERFACE.md](INTERFACE.md). The first view is the species, the age, what it is doing, and one line of its story ("born in the spring of year 42, outran the wolves twice"). Genes open under Blood. Only notable animals get names, such as the white stag or a chief's horse. The small-model naming that M3.5 uses can write them, with an offline fallback.
+
+### B6 — The Oracle and the player
+
+- **Prophecies:** "the deer will be gone from the valley within 30 years", "the herds will outnumber the people".
+- **Dilemmas:** wolves are taking the sheep: cull them or live with them? A white stag was seen: hunt it, or call it sacred?
+- **Miracles:** *Blessing of the Herds* (fertility). The plague can now strike the livestock.
+- The world summary sent to the AI gains a short line about the animals.
+
+### Exit for Part B
+
+Same seed, same animals: the determinism and save/load round-trip tests pass with animals in the world.
+
+**Over 100 years with the kind bot:**
+- Wild herds survive.
+- Overhunting can still wipe out a species when a bot overhunts.
+- With a kind god and healthy herds, hunters' food over 100 years stays within 10% of today's balance, so the numbers in LIFE_SIM and SOCIETY don't shift. Overhunting is allowed to miss that band.
+- Domestic lines visibly drift from wild ones in at least two genes.
+
+`tools/life_report.gd` and `tools/balance_report.gd` print the animal stats. The game holds 60 fps with 300 villagers and 300 animals.
+
+---
+
+## Order of work
+
+```
+A1 animation spike ─► A1 full set ─► A3 behavior ─► A4 polish
+        A2 steering + lanes ─┘            │
+B1 gene tables ─► B2 species ─► B3 system ─► B4 taming
+                                 └──────────► B5 view (needs A2) ─► B6 Oracle
+```
+
+Part A goes first because the player sees it every second. B1–B3 can run in parallel because they are headless and testable on their own.
+
+## Decisions
+
+Locked 2026-10-18.
+
+**Animations.** Retarget the Quaternius Universal Animation Library onto the current Kenney rig. The painted skins stay. The spike still renders a slim woman, a stout man, an elder, and a child. If the hands, the feet, or the scaled heads break, switch to the library's own rig and repaint the skins.
+
+**Animals.** Every animal is an individual with its own genome, capped at about 150 to 300 animals per island. A herd does not share one gene pool.
+
+**Hunting.** Hunters eat what they kill.
+
+A census of seed 42 under the carcass rule starved the camp. The herd did not. Tribe 0 started at pop 43, food 1500, and 18 steppe prey (horse and goat). About 11 people held the hunter job, but stored hunter work was about 0.04 because labor above a 20% offtake was counted as foraging, so forage work was about 10. Food fell every winter month (1500, then 988, 574, 378) and hit 0 in month 10. Deep-winter forage is season 0.35 times a steppe rate of 0.85. The old hunter rate, 2.9 times hunt season 0.7 times hunt rate 1.2, is what used to carry winter. Prey stayed around 16–21. A fifth of 18 animals, at 24 meals, is under one meal a day and cannot close a deficit of several meals a day.
+
+Daily hunt food is `RATES["hunter"]` times the hunt season, the biome hunt rate, and herd fullness (living prey divided by the prey counted at seeding). An empty valley pays nothing. Kills are real, but a normal camp takes only a handful a year, and the death does not add a second pile of meat. A huge hunt work wipes a species and then the food stops. Foragers and fishers stay on their formulas. Milk and slaughter (B4) must not stack a second full food source on top of this rate.
+
+**Hunting, revised after a 100-year census (2026-10-18).** Under the rule above, seed 8 (taiga, one band of 24) died out by year 10, and seeds 2 (taiga) and 4 (jungle) and 42 (steppe) lost their people or their prey under the kind bot. The cause was the seeding, not the formula: one herd of 8 deer and a lone bear could not outbreed a camp's 2–4 kills a year plus old age. The deer were gone by year 8, herd fullness fell to 0, and a taiga camp (forage 0.75, hunt 1.25) lost about 45% of its food and starved over the next two winters. Where a herd survived those first years it then filled the island's whole 240 cap (240 boars, 235 goats), so births of every other species stopped, and the deer died out in five of six meadow runs.
+
+The rule now:
+- **Seeding.** Each wild species starts with three herds (`AnimalSystem.HERDS`), never fewer than 6 animals (`FEWEST`; three bears were one or two mothers). Taiga starts with 24 deer, 6 bears and 15 wolves.
+- **Room.** A species stops breeding at twice its seeded count (`ROOM`). One fast breeder can no longer fill the cap and end every other species' births. This stands in for the forage grid, which is not built yet.
+- **Fullness per species.** Each prey species pays its share of the seeded prey, times its living count over its seeded count, capped at full. A goat boom does not pay for lost horses, and a species that is gone gives no meat (`animal_tally[species]["meat"]` stops).
+- **Who is hunted.** Each day the hunters come on the tracks of one prey animal drawn at random, so a common species is met more often than a rare one. They chase the easiest of that kind (lowest speed plus wariness). The kill chance is multiplied by 1 minus the species' danger, so bears (0.7) and boars (0.4) are often let go.
+- **Scale.** Hunt meat is multiplied by the camp's wild crowding (hunters count with foragers again), tools, chief and water, like every other food job, as it was before animals. Only the old daily random factor (0.6 to 1.4) is gone, and herd fullness takes its place.
+- **Overhunting.** 200 hunters' work a day in a meadow camp ends a prey species within 10 years (`test_overhunting_ends_a_species_and_its_meat`). 8000 hunters' work a day ends one within 60 days.
+
+Census, 100 years, no player and the balance report's kind bot. Seeds: meadow 1 6 17 18 23 24; jungle 4 7 9 14 15 16; steppe 10 13 22 34 36 42; taiga 2 3 5 8 12 19 49 51 56 57; highland 11 21 37 47 55 59 62. Before is `a9c83a0`, before animals. "Food per work" is hunter food over hunter work-days.
+
+| Biome (runs) | Mean pop at 100, before → now | Runs at pop 0 | Hunger deaths | Hunter food | Food per work | Prey species lost |
+|---|---|---|---|---|---|---|
+| Meadow (12) | 156 → 132 | 0 → 0 | 247 → 274 | 7.09M → 7.51M (+6%) | 2.79 → 2.71 (−3%) | 0 |
+| Jungle (12) | 142 → 160 | 0 → 0 | 106 → 58 | 6.91M → 6.34M (−8%) | 2.56 → 2.58 (+1%) | 0 (big cats, a predator, gone in 3 runs) |
+| Steppe (12) | 124 → 105 | 1 → 0 | 480 → 630 | 10.04M → 9.71M (−3%) | 3.15 → 3.15 (0%) | 0 |
+| Taiga (20) | 134 → 162 | 0 → 0 | 431 → 273 | 19.47M → 17.38M (−11%) | 3.47 → 3.36 (−3%) | 0 |
+| Highland (14) | 104 → 92 | 0 → 3 | 510 → 473 | 8.79M → 7.67M (−13%) | 2.69 → 2.60 (−3%) | 0 |
+| All (70) | 132 → 133 | 1 → 3 | 1774 → 1708 | 52.3M → 48.6M (−7%) | 3.02 → 2.96 (−2%) | 0 |
+
+Food per unit of hunt work is within 3% of the old balance in every biome. Total hunter food is within 10% overall and in three biomes. It is 11% lower in taiga and 13% lower in highland, because fewer hunter work-days were worked there. The herds were full in those runs; the job split and the population took a different path. That spread is RNG noise: one or two extra draws at world creation move the old highland total by 6–9% and kill seed 47 in both modes. The three highland runs that died (seed 11 both modes, seed 37 with no player) starved with full herds. Every seeded prey species was alive at year 100 in all 70 runs, near twice its seeding.
+

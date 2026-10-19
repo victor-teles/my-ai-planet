@@ -1,0 +1,19 @@
+{
+	"tasks": {
+		"prophecy": {"version": "v3", "tier": "large", "schema": "prophecy", "input": "world", "max_chars": 16000},
+		"dilemma": {"version": "v3", "tier": "medium", "schema": "dilemma", "input": "world", "max_chars": 16000},
+		"thought": {"version": "v2", "tier": "small", "schema": "thought", "input": "citizen", "max_chars": 6000},
+		"chronicle": {"version": "v2", "tier": "large", "schema": "chronicle", "input": "record", "max_chars": 24000},
+		"destiny": {"version": "v2", "tier": "large", "schema": "destiny", "input": "record", "max_chars": 24000},
+		"language": {"version": "v1", "tier": "small", "schema": "language", "input": "subject", "max_chars": 6000},
+		"names": {"version": "v1", "tier": "small", "schema": "names", "input": "subject", "max_chars": 6000},
+		"style": {"version": "v1", "tier": "small", "schema": "style", "input": "subject", "max_chars": 6000},
+		"heraldry": {"version": "v1", "tier": "small", "schema": "heraldry", "input": "subject", "max_chars": 6000},
+		"poster": {"version": "v1", "tier": "small", "schema": "poster", "input": "subject", "max_chars": 6000},
+		"monument": {"version": "v1", "tier": "small", "schema": "monument", "input": "subject", "max_chars": 6000}
+	},
+	"snippets": {
+		"ceiling": "content_ceiling.v1",
+		"gentle": "gentle_mode.v1"
+	}
+}

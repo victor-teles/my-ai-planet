@@ -1,0 +1,13 @@
+{
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["thought"],
+	"properties": {
+		"thought": {
+			"type": "string",
+			"description": "What the citizen is thinking right now, in their own words, 1 or 2 short sentences.",
+			"minLength": 10,
+			"maxLength": 220
+		}
+	}
+}

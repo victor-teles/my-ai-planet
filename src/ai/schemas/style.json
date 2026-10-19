@@ -1,0 +1,38 @@
+{
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["architecture", "fashion"],
+	"properties": {
+		"architecture": {
+			"type": "object",
+			"description": "How the tribe builds its homes, temples, schools, markets and the ruler's house.",
+			"additionalProperties": false,
+			"required": ["roof", "material", "wall", "roof_color", "trim", "ornament", "towers", "proportion"],
+			"properties": {
+				"roof": {"type": "string", "enum": ["cone", "gable", "dome", "stepped", "flat", "spire"], "description": "Roof shape."},
+				"material": {"type": "string", "enum": ["daub", "timber", "stone", "plaster", "brick", "concrete"], "description": "What the walls are built of. Only the materials the facts allow for the tribe's age."},
+				"wall": {"type": "integer", "minimum": 0, "maximum": 31, "description": "Palette index for the walls, from the walls list."},
+				"roof_color": {"type": "integer", "minimum": 0, "maximum": 31, "description": "Palette index for the roofs, from the roofs list."},
+				"trim": {"type": "integer", "minimum": 0, "maximum": 31, "description": "Palette index for doors, bands and details, from the trim list."},
+				"ornament": {"type": "string", "enum": ["none", "carved", "painted", "banners", "gilded", "grim"], "description": "Decoration on the fronts."},
+				"towers": {"type": "integer", "minimum": 0, "maximum": 2, "description": "Towers on the temple, the school and the ruler's house."},
+				"proportion": {"type": "string", "enum": ["squat", "balanced", "tall"], "description": "Low and wide, ordinary, or tall and narrow."}
+			}
+		},
+		"fashion": {
+			"type": "object",
+			"description": "What the people wear. Each class is a palette index for its clothes.",
+			"additionalProperties": false,
+			"required": ["commoner", "noble", "bonded", "guard", "trim", "pattern", "accessory"],
+			"properties": {
+				"commoner": {"type": "integer", "minimum": 0, "maximum": 31, "description": "Ordinary people's clothes, from the cloth or drab list."},
+				"noble": {"type": "integer", "minimum": 0, "maximum": 31, "description": "Nobles' clothes, from the cloth or bright list."},
+				"bonded": {"type": "integer", "minimum": 0, "maximum": 31, "description": "The bonded's clothes, from the drab list."},
+				"guard": {"type": "integer", "minimum": 0, "maximum": 31, "description": "Guards' clothes or uniform, from the cloth or drab list."},
+				"trim": {"type": "integer", "minimum": 0, "maximum": 31, "description": "Bands, borders and accessories, from the trim list."},
+				"pattern": {"type": "string", "enum": ["plain", "stripes", "hem", "checks", "sash"], "description": "Pattern woven into the clothes, in the trim color."},
+				"accessory": {"type": "string", "enum": ["none", "headband", "hat", "hood", "scarf", "feather"], "description": "What ordinary people wear with it."}
+			}
+		}
+	}
+}

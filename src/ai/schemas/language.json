@@ -1,0 +1,40 @@
+{
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["onsets", "vowels", "codas", "closed", "long"],
+	"properties": {
+		"onsets": {
+			"type": "array",
+			"description": "Consonants or consonant clusters that start a syllable, lowercase a to z, 1 to 3 letters each (k, th, str, mb).",
+			"minItems": 3,
+			"maxItems": 20,
+			"items": {"type": "string", "minLength": 1, "maxLength": 3}
+		},
+		"vowels": {
+			"type": "array",
+			"description": "Vowels or vowel clusters at the heart of a syllable, letters a e i o u y only, 1 to 3 letters each (a, ou, ii).",
+			"minItems": 2,
+			"maxItems": 12,
+			"items": {"type": "string", "minLength": 1, "maxLength": 3}
+		},
+		"codas": {
+			"type": "array",
+			"description": "Consonants or clusters a name may end on, 1 to 3 letters each (n, sh, rk). May be empty for a tongue of open syllables.",
+			"minItems": 0,
+			"maxItems": 12,
+			"items": {"type": "string", "minLength": 1, "maxLength": 3}
+		},
+		"closed": {
+			"type": "integer",
+			"description": "Percent of names that end on a coda, 0 to 80.",
+			"minimum": 0,
+			"maximum": 80
+		},
+		"long": {
+			"type": "integer",
+			"description": "Percent of given names with two syllables rather than one, 0 to 90.",
+			"minimum": 0,
+			"maximum": 90
+		}
+	}
+}

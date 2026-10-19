@@ -1,0 +1,11 @@
+{
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["slogan", "ground", "ink", "emblem"],
+	"properties": {
+		"slogan": {"type": "string", "description": "The poster's slogan, at most 10 words.", "minLength": 3, "maxLength": 70},
+		"ground": {"type": "integer", "description": "The paper's color: a palette index from the facts.", "minimum": 0, "maximum": 31},
+		"ink": {"type": "integer", "description": "The print's color: a palette index that stands out on the paper.", "minimum": 0, "maximum": 31},
+		"emblem": {"type": "string", "description": "A simple SVG motif on a 64 by 64 viewBox colored with palette tokens, or an empty string for the law's usual motif.", "maxLength": 1600}
+	}
+}

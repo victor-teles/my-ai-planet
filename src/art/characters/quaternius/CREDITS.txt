@@ -1,0 +1,7 @@
+Quaternius Universal Animation Library (Standard) and Universal Animation Library 2 (Standard).
+Author: Quaternius.
+License: CC0.
+https://quaternius.com/packs/universalanimationlibrary.html
+
+Clips from both libraries are used; docs/animations/CLIPS.md lists which.
+The clips are retargeted onto Kenney's characterMedium. The Quaternius meshes are not used.

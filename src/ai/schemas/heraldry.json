@@ -1,0 +1,11 @@
+{
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["motto", "field", "charge", "emblem"],
+	"properties": {
+		"motto": {"type": "string", "description": "The house's motto, 2 to 8 words.", "minLength": 2, "maxLength": 60},
+		"field": {"type": "integer", "description": "The banner's background color: a palette index from the facts.", "minimum": 0, "maximum": 31},
+		"charge": {"type": "string", "description": "What the emblem shows.", "enum": ["sun", "moon", "star", "tree", "wave", "eye", "crown", "flame", "hand", "mountain", "wheel", "tower", "fish", "grain"]},
+		"emblem": {"type": "string", "description": "The charge drawn as a small SVG on a 64 by 64 viewBox, colored with palette tokens (fill='p17').", "maxLength": 2400}
+	}
+}

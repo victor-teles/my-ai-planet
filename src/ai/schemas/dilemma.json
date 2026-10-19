@@ -1,0 +1,39 @@
+{
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["title", "situation", "tribe", "choices"],
+	"properties": {
+		"title": {"type": "string", "description": "A short title for the card.", "minLength": 3, "maxLength": 50},
+		"situation": {"type": "string", "description": "What is happening, in 2 or 3 sentences, grounded in the world state.", "minLength": 30, "maxLength": 400},
+		"tribe": {"type": "string", "description": "The tribe this is about, exactly as named in the world state, or an empty string for the whole valley."},
+		"choices": {
+			"type": "array",
+			"minItems": 2,
+			"maxItems": 3,
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["label", "hint", "effects"],
+				"properties": {
+					"label": {"type": "string", "description": "What the god does, as a short imperative.", "maxLength": 60},
+					"hint": {"type": "string", "description": "A hint of what may follow. Suggest the risk, don't spell out the numbers.", "maxLength": 140},
+					"effects": {
+						"type": "array",
+						"maxItems": 6,
+						"items": {
+							"type": "object",
+							"additionalProperties": false,
+							"required": ["type", "tribe", "amount"],
+							"properties": {
+								"type": {"type": "string", "enum": ["food", "population", "split", "rain", "influence", "kindness", "relation", "law", "unrest", "legitimacy"]},
+								"tribe": {"type": "string", "description": "Tribe name for food, population, split, relation, law, unrest and legitimacy; empty string otherwise."},
+								"amount": {"type": "number"},
+								"law": {"type": "string", "description": "For a law effect only: the law's id (see the prompt)."}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
