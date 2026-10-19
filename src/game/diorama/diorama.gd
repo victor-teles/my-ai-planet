@@ -24,6 +24,7 @@ var shape: IslandShape
 var sites: WorkSites
 var camera_rig := CameraRig.new()
 var atmosphere: Atmosphere
+var herds := Herds.new() ## the animals
 
 var _camps: Dictionary = {} ## tribe name -> Settlement
 var _next_slot := 0
@@ -57,6 +58,8 @@ func build(world: Dictionary, seed_value: int) -> void:
 	_water_material.shader = WATER_SHADER
 	_build_environment()
 	_build_island(world, seed_value)
+	herds.setup(shape, sites, seed_value)
+	add_child(herds)
 	_build_clouds(seed_value)
 	_build_rain()
 	camera_rig.fit(shape.radius)
@@ -202,6 +205,7 @@ func sync(state: WorldState, delta: float) -> void:
 	_snow = move_toward(_snow, target_snow, delta * 0.25)
 	ToonMaterials.set_snow(_snow)
 	atmosphere.update(state, delta)
+	herds.sync(state, delta, _camps, camera_rig.camera)
 	_clouds.rotation.y += delta * 0.01
 	_rain.emitting = state.blessed_rain_months > 0
 	_sync_water(state, delta)

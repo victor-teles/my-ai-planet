@@ -1,0 +1,17 @@
+Quaternius, Ultimate Animated Animal Pack (July 2021).
+Author: Quaternius.
+License: CC0 1.0 (public domain).
+https://quaternius.com/packs/ultimateanimatedanimals.html
+Files downloaded as GLB from poly.pizza, where Quaternius publishes the same models:
+  deer.glb       https://poly.pizza/m/T6Cs7tmMHJ  (Deer)
+  stag.glb       https://poly.pizza/m/tQdzbZ1Cmw  (Stag)
+  wolf.glb       https://poly.pizza/m/P1gU3Qkr9r  (Wolf)
+  horse.glb      https://poly.pizza/m/qvTrSG9pZF  (Horse)
+  cow.glb        https://poly.pizza/m/26zM1outCr  (Cow)
+  bull.glb       https://poly.pizza/m/a8PIIYwF7r  (Bull)
+  fox.glb        https://poly.pizza/m/Bc97C66HKi  (Fox)
+  shiba_inu.glb  https://poly.pizza/m/y4wdQpg767  (Shiba Inu)
+The files are unchanged. Each has Idle, Idle_2, Idle_Headlow (Idle_2_HeadLow), Eating, Walk,
+Gallop, Gallop_Jump, Jump_toIdle, Attack, Death and hit reactions. The game recolors them from
+genes and restyles them with its toon shader and an ink outline (game/diorama/animal_art.gd).
+Not used: the pack's Alpaca, Donkey, Husky and White Horse.

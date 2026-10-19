@@ -107,6 +107,55 @@ static func step(mover: Dictionary, target: Vector3, neighbors: Array, obstacles
 	return next
 
 
+## Flocking for herds: a desired velocity toward the middle of the mates within radius, as
+## strong as how far the mover has strayed past half that radius. Zero with no mates near.
+static func cohesion(mover: Dictionary, mates: Array, radius: float) -> Vector3:
+	var pos := _xz(mover.position)
+	var sum := Vector3.ZERO
+	var count := 0
+	for other: Dictionary in mates:
+		if _is_self(mover, other):
+			continue
+		var at := _xz(other.position)
+		if at.distance_to(pos) <= radius:
+			sum += at
+			count += 1
+	if count == 0:
+		return Vector3.ZERO
+	var offset := sum / float(count) - pos
+	var reach := clampf((offset.length() - radius * 0.5) / maxf(radius * 0.5, 0.001), 0.0, 1.0)
+	if reach <= 0.0:
+		return Vector3.ZERO
+	return offset.normalized() * float(mover.max_speed) * reach
+
+
+## Flocking for herds: the mean velocity of the mates within radius, no faster than max speed.
+static func alignment(mover: Dictionary, mates: Array, radius: float) -> Vector3:
+	var pos := _xz(mover.position)
+	var sum := Vector3.ZERO
+	var count := 0
+	for other: Dictionary in mates:
+		if _is_self(mover, other):
+			continue
+		if _xz(other.position).distance_to(pos) <= radius:
+			sum += _xz(other.velocity)
+			count += 1
+	if count == 0:
+		return Vector3.ZERO
+	return _clamp_len(sum / float(count), float(mover.max_speed))
+
+
+## The point to hand step() so a herd animal heads for target while keeping with its mates:
+## cohesion and alignment bend the way there, and step() keeps the separation and avoidance.
+static func flock_target(mover: Dictionary, target: Vector3, mates: Array, radius: float, cohesion_weight: float = 0.5, alignment_weight: float = 0.4, lookahead: float = 0.8) -> Vector3:
+	var bend := cohesion(mover, mates, radius) * cohesion_weight + alignment(mover, mates, radius) * alignment_weight
+	if bend.length_squared() < 0.000001:
+		return target
+	var aim := _xz(target) + bend * lookahead
+	aim.y = target.y
+	return aim
+
+
 ## Disc radius that covers a later-age footprint. SIZES packs (half-width, half-depth, height)
 ## with the depth in Y, because the art const is a Vector3.
 static func footprint_radius(type: String) -> float:

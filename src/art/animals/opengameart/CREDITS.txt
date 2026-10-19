@@ -1,0 +1,13 @@
+Two rigged, animated animals from OpenGameArt.org, both CC0 1.0 (public domain).
+
+boar.glb: "Boar" by Teh_Bucket (2015). Rigged, with walk and attack animations.
+  https://opengameart.org/content/boar  (boar_0.blend)
+goat.glb: "3D goat animation for game" by tomek (2022).
+  https://opengameart.org/content/3d-goat-animation-for-game  (goat_0.blend)
+  Clips: idle, walk, run, jump, fly, land, swim, eat, attack, die, turn left and right.
+
+Converted from .blend to .glb with Blender 5.2 (scripts disabled): only the armature and its
+mesh kept, modifiers applied, every action exported. The painted textures were dropped: each
+face took a flat named material (Main, Horns, Muzzle, Hair, Eye_Black) from the texture color
+at its UV center, and the horn and tusk faces became their own mesh pinned to the head bone,
+so the game can recolor the coat from genes and grow the horns with the horns gene.
